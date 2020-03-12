@@ -181,35 +181,38 @@ class WeightedLCANet(nn.Module):
         logging.debug(f"X:\n{X}")
 
         X = self.relu(X)
-        result = torch.zeros(X.shape[0], len(self.nodes))
+        lca_sums = torch.zeros(X.shape[0], len(self.nodes))
+        # lca_normalized = torch.zeros(X.shape[0], len(self.nodes))
         for i, leaf in enumerate(self.leaves):
             if leaf != 0:
                 # TODO think carefully about whether sum_leaves shoudl be
                 #  multiplied.
                 #  It was added to combat the problem of no nodes being
                 #  assigned
-                result[:, leaf] = X[:, i] * (sum_leaves / (sum_leaves +
+                lca_sums[:, leaf] = X[:, i] * (sum_leaves / (sum_leaves +
                                                            self.epsilon))
             else:
                 # TODO for now this assumes that epsilon * X[:, 0] is less than
                 #  max_value (around 1). But greater than 0 (assumes X[:,
                 #  0] non-negative)
-                result[:, leaf] = self.epsilon * (X[:, i] + 1)
+                lca_sums[:, leaf] = self.epsilon * (X[:, i] + 1)
 
         logging.debug(f"nodes {self.nodes}")
-        logging.debug(f"results(pre traversal):\n{result}")
+        logging.debug(f"results(pre traversal):\n{lca_sums}")
 
         for node in self.postorder_traveral:
             if node not in self.leaves:
                 for child in self.parent_to_children[node]:
                     # multiply by (1 - epsilon) so a parent is only larger
                     # than child if it has multiple descendents
-                    result[:, node] += (1 - self.epsilon) * result[:, child]
-                # result[:, node] = result[:, node] / (result[:, node] +
+                    lca_sums[:, node] += (1 - self.epsilon) * lca_sums[:, child]
+                # result[:, node] *= result[:, node] / (result[:, node] +
                 #                                      self.epsilon)
+                # lca_normalized[:, node] = \
+                #     lca_sums[:, node] / (lca_sums[:, node] + self.epsilon)
         # result is now a (N, n_nodes) tensor
-        logging.debug(f"results(post traversal):\n{result}")
-        return result
+        logging.debug(f"results(post traversal):\n{lca_sums}")
+        return lca_sums
 
 
 class KrakenNet(nn.Module):
