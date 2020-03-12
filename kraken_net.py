@@ -130,6 +130,11 @@ def _postorder_traversal(nodes, root=1, order=None):
     return order
 
 
+def tanh_onto_0_to_1(x):
+    x = torch.mul(0.5, torch.add(x, 1))
+    return x
+
+
 class WeightedLCANet(nn.Module):
 
     def __init__(self, parent_to_children, leaves=None, nodes=None):
@@ -233,6 +238,9 @@ class KrakenNet(nn.Module):
         # TODO activation?
         self.weighted_lca_net = WeightedLCANet(self.tree, self.leaves,
                                                self.nodes)
+        self.tanh = nn.Tanh()
+        self.tanh_onto_0_to_1 = tanh_onto_0_to_1
+
         # 1/2 tanh + 1/2
 
     def forward(self, X):
@@ -254,6 +262,8 @@ class KrakenNet(nn.Module):
         # returns shape (N, read_length - kmer_length + 1, n_nodes)
         taxa_affinities = self.linear_layer(feature_map)
         # todo here is where the activation should go
+        taxa_affinities = self.tanh(taxa_affinities)
+        taxa_affinities = self.tanh_onto_0_to_1(taxa_affinities)
 
         root_to_node_sums = {
             0: taxa_affinities[:, :, 0],
