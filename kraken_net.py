@@ -1,12 +1,78 @@
+import math
 from collections import OrderedDict
 import numpy as np
 import torch
 from torch import nn
+from torch.nn import init
 import warnings
 import logging
 import sys
 from set_conv import DNAFilterConstructor
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+
+
+class ReLUMiddleLinear(nn.Module):
+    """
+    Does like a linear layer, but only takes the positive terms in the
+    matrix multiplication (before summing)
+
+    """
+    __constants__ = ['bias', 'in_features', 'out_features']
+
+    def __init__(self, in_features, out_features, bias=True):
+        super(ReLUMiddleLinear, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = nn.Parameter(torch.Tensor(out_features, in_features))
+        self.relu = nn.ReLU()
+        if bias:
+            self.bias = nn.Parameter(torch.Tensor(out_features))
+        else:
+            self.register_parameter('bias', None)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, input):
+
+        # return F.linear(input, self.weight, self.bias)
+        output = input.matmul(self.weight.t())
+        if self.bias is not None:
+            output += self.bias
+        ret = output
+        return ret
+
+    def extra_repr(self):
+        return 'in_features={}, out_features={}, bias={}'.format(
+            self.in_features, self.out_features, self.bias is not None
+        )
+
+def kronecker_product(t1, t2):
+    """
+    See: https://discuss.pytorch.org/t/kronecker-product/3919/4
+
+    Computes the Kronecker product between two tensors.
+    See https://en.wikipedia.org/wiki/Kronecker_product
+    """
+    t1_height, t1_width = t1.size()
+    t2_height, t2_width = t2.size()
+    out_height = t1_height * t2_height
+    out_width = t1_width * t2_width
+
+    tiled_t2 = t2.repeat(t1_height, t1_width)
+    expanded_t1 = (
+        t1.unsqueeze(2)
+          .unsqueeze(3)
+          .repeat(1, t2_height, t2_width, 1)
+          .view(out_height, out_width)
+    )
+
+    return expanded_t1 * tiled_t2
 
 
 def _read_nodes_dmp(fp):
@@ -238,11 +304,14 @@ class KrakenNet(nn.Module):
         # I think this is better with bias = False for now?
         self.kmer_filter = nn.Conv1d(4, num_channels,
                                      kernel_size=kmer_length, bias=False)
-        self.linear_layer = nn.Linear(num_channels, self.n_nodes, bias=False)
+        # self.linear_layer = nn.Linear(num_channels, self.n_nodes, bias=True)
+        self.linear_layer = ReLUMiddleLinear(num_channels, self.n_nodes,
+                                             bias=True)
         # LCA net has not parameters!
         self.weighted_lca_net = WeightedLCANet(self.tree, self.leaves,
                                                self.nodes)
         self.tanh = nn.Tanh()
+        self.relu = nn.ReLU()
         self.tanh_onto_0_to_1 = tanh_onto_0_to_1
         self.database = None
         self.database_filters = None
@@ -267,8 +336,13 @@ class KrakenNet(nn.Module):
         # then needs to be reshaped to (N, L, nc) for linear layer...
         feature_map = self.kmer_filter(X).permute(0, 2, 1).contiguous()
         # returns shape (N, read_length - kmer_length + 1, n_nodes)
+        print("feature map0\n", feature_map[0])
+        print("feature map4\n", feature_map[4])
+        print("feature map4\n", feature_map[6])
         taxa_affinities = self.linear_layer(feature_map)
         # todo here is where the activation should go
+        print("taxaff raw\n", taxa_affinities)
+        # taxa_affinities = self.relu(taxa_affinities)
         taxa_affinities = self.tanh(taxa_affinities)
         taxa_affinities = self.tanh_onto_0_to_1(taxa_affinities)
 
@@ -282,6 +356,7 @@ class KrakenNet(nn.Module):
         taxa_affinities[:, :, 0] = torch.add(
             -taxa_affinities[:, :, 1:].max(dim=2)[0], 1.)
 
+        print("taxaff\n", taxa_affinities)
         root_to_node_sums = {
             0: taxa_affinities[:, :, 0],
             1: taxa_affinities[:, :, 1],
@@ -307,7 +382,7 @@ class KrakenNet(nn.Module):
         # input to LCA will be (N, n_leaves)
         # output from LCA wil be (N, n_nodes)
 
-        lca = self.weighted_lca_net(rtl_sums - rtl_sums.max())
+        lca = self.weighted_lca_net(rtl_sums)#  - rtl_sums.max())
         return lca
 
     def init_from_database(self, database, requires_grad=True):
@@ -352,7 +427,14 @@ class KrakenNet(nn.Module):
 
         self.kmer_filter.weight = filter_weights_param
 
-        # TODO initialize linear layer (num_channels x n_nodes)
+        # todo this -10 should be more flexible, but is to make sure that
+        #  everything is off by default,
+        kmer_map_bias = nn.Parameter(torch.tensor(
+            np.repeat(-10, self.n_nodes).astype(np.float32)),
+            requires_grad=requires_grad
+        )
+
+        # TODO initialize linear layer (n_nodes x n_channels)
         kmer_map = np.zeros((self.n_nodes, self.num_channels),
                             dtype=np.float32)
         nonzero_positions_x = []
@@ -362,11 +444,17 @@ class KrakenNet(nn.Module):
             nonzero_positions_x.append(target_node)
             nonzero_positions_y.append(channel)
 
-        kmer_map[nonzero_positions_x, nonzero_positions_y] = 1.
+        print("db_filt", self.database_filters)
+        print("positions", nonzero_positions_x, nonzero_positions_y)
+        kmer_map[nonzero_positions_x, nonzero_positions_y] = 10.
+        print("kmer_map 5", kmer_map[5, :])
+        print("kmer_map\n", kmer_map)
+        print("kmer_map_bias\n", kmer_map_bias)
         kmer_map_param = nn.Parameter(torch.tensor(kmer_map),
                                       requires_grad=requires_grad,
                                       )
 
+        self.linear_layer.bias = kmer_map_bias
         self.linear_layer.weight = kmer_map_param
 
 
