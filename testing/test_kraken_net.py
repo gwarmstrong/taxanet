@@ -124,7 +124,7 @@ class KrakenNetTestCase(unittest.TestCase):
         }
         test_data = [
             "AATTC",  # exp 1
-            "AATGG",  # exp 2
+            "AATTG",  # exp 6
             "GGGGG",  # exp 0
             "TTGCA",  # exp 6
             "TTTTT",  # exp 5
@@ -143,7 +143,7 @@ class KrakenNetTestCase(unittest.TestCase):
         y = model(X)
         # self.assertTupleEqual((N, model.n_nodes), y.shape)
         obs_classes = torch.argmax(y, 1)
-        exp_classes = [1, 2, 0, 6, 5, 4, 5]
+        exp_classes = [1, 6, 0, 6, 5, 4, 5]
         npt.assert_array_equal(obs_classes, exp_classes)
 
     def test_WeightedLCANet_simple(self):
