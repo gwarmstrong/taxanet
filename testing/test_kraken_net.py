@@ -9,6 +9,7 @@ from kraken_net import (_read_nodes_dmp, _get_leaves_nodes, KrakenNet,
                         _invert_tree, _postorder_traversal,
                         WeightedLCANet,
                         )
+from set_conv import DNAStringOneHotEncoder
 
 
 class KrakenNetTestCase(unittest.TestCase):
@@ -98,13 +99,10 @@ class KrakenNetTestCase(unittest.TestCase):
         y.sum().backward()
 
     def test_KrakenNet_correctness(self):
-        my_text = "some text to return when read() is called on the file " \
-                  "object"
         N = 7
         read_length = 5
         kmer_length = 3
         channels = 8
-        self.X = torch.randn(N, 4, read_length)
         my_tree = \
             "1   |   1   |   no rank |\n" \
             "2   |   1   |   no rank |\n" \
@@ -124,16 +122,29 @@ class KrakenNetTestCase(unittest.TestCase):
             "TGC": 7,
             "GCA": 8,
         }
+        test_data = [
+            "AATTC",  # exp 1
+            "AATGG",  # exp 2
+            "GGGGG",  # exp 0
+            "TTGCA",  # exp 6
+            "TTTTT",  # exp 5
+            "ATATT",  # exp 4
+            "TTTTC",  # exp 5
+        ]
+        ohe = DNAStringOneHotEncoder()
+        X = torch.tensor(ohe.fit_transform(test_data))
         mocked_open_function = mock.mock_open(read_data=my_tree)
         with mock.patch("builtins.open", mocked_open_function):
             model = KrakenNet(kmer_length, channels, my_tree)
 
-        model.init_from_database(database)
-        print(model.kmer_filter.weight)
+        # weird, but I have to
+        model.init_from_database(database, requires_grad=True)
 
-        y = model(self.X)
-        self.assertTupleEqual((N, model.n_nodes), y.shape)
-        y.sum().backward()
+        y = model(X)
+        # self.assertTupleEqual((N, model.n_nodes), y.shape)
+        obs_classes = torch.argmax(y, 1)
+        exp_classes = [1, 2, 0, 6, 5, 4, 5]
+        npt.assert_array_equal(obs_classes, exp_classes)
 
     def test_WeightedLCANet_simple(self):
         N = 20

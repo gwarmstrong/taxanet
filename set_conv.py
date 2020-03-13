@@ -8,6 +8,79 @@ from sklearn.preprocessing import OneHotEncoder
 default_alphabet = ['A', 'C', 'G', 'T']
 
 
+class DNAStringOneHotEncoder(BaseEstimator, TransformerMixin):
+
+    def __init__(self, alphabet=None, dtype=None):
+        if alphabet is None:
+            alphabet = default_alphabet
+        self.alphabet = alphabet
+        self.one_hot_encoder = OneHotEncoder(categories=[self.alphabet],
+                                             handle_unknown='ignore')
+        self.kmer_length = None
+        # higher lambda means penalize missing bases more
+        if dtype is None:
+            self.dtype = np.float32
+
+    def fit(self, X, y=None):
+        """
+
+        Parameters
+        ----------
+        X : list or array of string
+        y
+
+        Returns
+        -------
+
+        """
+        first_length = len(X[0])
+        for i, kmer in enumerate(X):
+            if len(kmer) != first_length:
+                raise ValueError(f"All kmers must have same length. First "
+                                 f"length is {first_length}. Got {len(kmer)}"
+                                 f"for kmer {i}")
+        self.kmer_length = first_length
+        # this ensures that the miss value with be at least lamba less than
+        #  the maximum activation score
+        self.one_hot_encoder.fit(np.array([list(X[0])]).transpose())
+        return self
+
+    def fit_transform(self, X, y=None, **fit_args):
+        """
+
+        Parameters
+        ----------
+        X : list or array of string
+        y
+
+        Returns
+        -------
+
+        """
+        self.fit(X, y=y)
+        return self.transform(X, y=y)
+
+    def transform(self, X, y=None):
+        """
+
+        Parameters
+        ----------
+        X : list or array of string
+        y
+
+        Returns
+        -------
+        np.array of shape (N, 4, length)
+
+        """
+        all_filters = [None for _ in range(len(X))]
+        for i, filter_ in enumerate(X):
+            all_filters[i] = self.one_hot_encoder.transform(
+                [[letter] for letter in filter_]).toarray()\
+                    .transpose()
+        return np.array(all_filters, dtype=self.dtype)
+
+
 class DNAFilterConstructor(BaseEstimator, TransformerMixin):
 
     def __init__(self, alphabet=None, dtype=None):

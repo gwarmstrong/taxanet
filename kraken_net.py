@@ -1,4 +1,5 @@
 from collections import OrderedDict
+import numpy as np
 import torch
 from torch import nn
 import warnings
@@ -234,10 +235,11 @@ class KrakenNet(nn.Module):
         self.n_nodes = len(self.nodes)
         self.num_channels = num_channels
         self.kmer_length = kmer_length
-        # TODO bias?
-        self.kmer_filter = nn.Conv1d(4, num_channels, kernel_size=kmer_length)
-        self.linear_layer = nn.Linear(num_channels, self.n_nodes)
-        # TODO activation?
+        # I think this is better with bias = False for now?
+        self.kmer_filter = nn.Conv1d(4, num_channels,
+                                     kernel_size=kmer_length, bias=False)
+        self.linear_layer = nn.Linear(num_channels, self.n_nodes, bias=False)
+        # LCA net has not parameters!
         self.weighted_lca_net = WeightedLCANet(self.tree, self.leaves,
                                                self.nodes)
         self.tanh = nn.Tanh()
@@ -308,7 +310,7 @@ class KrakenNet(nn.Module):
         lca = self.weighted_lca_net(rtl_sums - rtl_sums.max())
         return lca
 
-    def init_from_database(self, database):
+    def init_from_database(self, database, requires_grad=True):
         """
 
         Parameters
@@ -321,20 +323,50 @@ class KrakenNet(nn.Module):
         -------
 
         """
-        # TODO do some sanity checks on the database...
-        #  e.g., they are all length k, and all nodes are valid
+        # TODO this should be changed to a less than, so some channels can
+        #  be left free to be learned (i.e., len(database) < self.num_channels
+        if len(database) != self.num_channels:
+            raise ValueError("Database must be the same length as number of "
+                             "channels in the network.")
+        # TODO rewrite so we're not looping over these a bunch of times...
+        if not all(node in self.nodes for node in database.values()):
+            # TODO improve this error message
+            raise ValueError("Database must only contain nodes in the tree.")
+        if not all(len(kmer) == self.kmer_length for kmer in database.keys()):
+            # TODO improve this error message
+            raise ValueError(f"Database must only contain kmers of length "
+                             f"{self.kmer_length}")
+
         self.database = OrderedDict(database)
         self.database_filters = list(self.database.keys())
 
         self.filter_constructor = DNAFilterConstructor()
         filter_weights = self.filter_constructor.fit_transform(
             self.database_filters)
-        conv = nn.Conv1d(4, 1, kernel_size=9, bias=False)
         # print(conv.bias.shape)
         # TODO -10 should be replace with more negative value... needs to be at
         #  most (k - 10) so its pretty well into negative territory all but one
         #  base matches
         filter_weights_param = nn.Parameter(torch.tensor(filter_weights),
-                                            requires_grad=True)
+                                            requires_grad=requires_grad)
 
         self.kmer_filter.weight = filter_weights_param
+
+        # TODO initialize linear layer (num_channels x n_nodes)
+        kmer_map = np.zeros((self.n_nodes, self.num_channels),
+                            dtype=np.float32)
+        nonzero_positions_x = []
+        nonzero_positions_y = []
+        for channel, filter_ in enumerate(self.database_filters):
+            target_node = self.database[filter_]
+            nonzero_positions_x.append(target_node)
+            nonzero_positions_y.append(channel)
+
+        kmer_map[nonzero_positions_x, nonzero_positions_y] = 1.
+        kmer_map_param = nn.Parameter(torch.tensor(kmer_map),
+                                      requires_grad=requires_grad,
+                                      )
+
+        self.linear_layer.weight = kmer_map_param
+
+
