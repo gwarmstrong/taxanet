@@ -144,6 +144,39 @@ class KrakenNetTestCase(unittest.TestCase):
         self.assertTupleEqual((len(X), len(nodes)), y.shape)
         y.sum().backward()
 
+    def test_WeightedLCANet_inexact(self):
+        tree = {
+            1: [2, 3],
+            2: [4, 5, 6],
+            3: [7, 8],
+        }
+        # nodes includes 0, which is unclassified
+        leaves, nodes = _get_leaves_nodes(tree)
+
+        # override leaves to get the desired order
+        leaves = [0, 4, 5, 6, 7, 8]
+        model = WeightedLCANet(tree, leaves, nodes)
+        X = torch.tensor([
+            [0, 12, 11.99, 9, 10, 0],  # LCA is 2
+            [0, 11, 11, 9, 10, 0],  # LCA is 2
+            [0,  4,  4, 3, 12, 0],  # LCA is 7
+            [0,  4,  4, 3,  9, 8.1],  # LCA is 3
+            [9,  0,  0, 0,  0, 0],  # LCA is 0
+            [2,  1,  0, 0,  0, 0],  # LCA is 4
+            [1,  5.05,  5, 5,  0, 0],  # LCA is 2
+        ],
+            requires_grad=True,
+            dtype=torch.float32,
+        )
+        y = model(X)
+        # printing y here can be useful for visualizing what the outputs
+        # look like
+        # print(y)
+        obs_classes = torch.argmax(y, 1)
+        exp_classes = [2, 2, 7, 3, 0, 4, 2]
+        npt.assert_array_equal(obs_classes, exp_classes)
+        self.assertTupleEqual((len(X), len(nodes)), y.shape)
+        y.sum().backward()
 
 if __name__ == '__main__':
     unittest.main()
