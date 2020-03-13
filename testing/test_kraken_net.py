@@ -123,16 +123,22 @@ class KrakenNetTestCase(unittest.TestCase):
             "GCA": 8,
         }
         test_data = [
-            "AATTC",  # exp 1
+            "AATTA",  # exp 1
             "AATTG",  # exp 6
             "GGGGG",  # exp 0
             "TTGCA",  # exp 6
-            "TTTTT",  # exp 5
+            "TTTTT",  # exp 6
             "ATATT",  # exp 4
-            "TTTTC",  # exp 5
+            "TTTTC",  # exp 6
+            "GCAAA",  # exp 8
+            "TGCCC",  # exp 7
+            "AATCA",  # exp 2
+            "GCATA",  # exp 3
         ]
         ohe = DNAStringOneHotEncoder()
         X = torch.tensor(ohe.fit_transform(test_data))
+        # this mock lets me pass a string io in for the tree and have it be
+        #  read as a file
         mocked_open_function = mock.mock_open(read_data=my_tree)
         with mock.patch("builtins.open", mocked_open_function):
             model = KrakenNet(kmer_length, channels, my_tree)
@@ -143,7 +149,7 @@ class KrakenNetTestCase(unittest.TestCase):
         y = model(X)
         # self.assertTupleEqual((N, model.n_nodes), y.shape)
         obs_classes = torch.argmax(y, 1)
-        exp_classes = [1, 6, 0, 6, 5, 4, 5]
+        exp_classes = [1, 6, 0, 6, 6, 4, 6, 8, 7, 2, 3]
         npt.assert_array_equal(obs_classes, exp_classes)
 
     def test_WeightedLCANet_simple(self):

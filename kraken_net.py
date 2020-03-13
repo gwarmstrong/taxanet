@@ -41,7 +41,10 @@ class ReLUMiddleLinear(nn.Module):
     def forward(self, input):
 
         # return F.linear(input, self.weight, self.bias)
-        output = input.matmul(self.weight.t())
+        # output = input.matmul(self.weight.t())
+        output = torch.einsum('bij,jk->bikj', input, self.weight.t())
+        output = self.relu(output)
+        output = output.sum(dim=3)
         if self.bias is not None:
             output += self.bias
         ret = output
@@ -305,6 +308,10 @@ class KrakenNet(nn.Module):
         self.kmer_filter = nn.Conv1d(4, num_channels,
                                      kernel_size=kmer_length, bias=False)
         # self.linear_layer = nn.Linear(num_channels, self.n_nodes, bias=True)
+        # switched to this layer because I need the positive parts of the
+        # matrix mutliplication
+        # https://stackoverflow.com/questions/47974959/numpy-matrix-
+        #  multiplication-to-return-ndarray-not-sum
         self.linear_layer = ReLUMiddleLinear(num_channels, self.n_nodes,
                                              bias=True)
         # LCA net has not parameters!
