@@ -183,7 +183,7 @@ class WeightedLCANet(nn.Module):
         X = X - Xmax_excl_unc + self.max_value
         # now relu so only thing that score within max_value of the max are
         # included
-        logging.debug(f"X:\n{X}")
+        # logging.debug(f"X:\n{X}")
 
         X = self.relu(X)
         lca_sums = torch.zeros(X.shape[0], len(self.nodes))
@@ -202,8 +202,8 @@ class WeightedLCANet(nn.Module):
                 #  0] non-negative)
                 lca_sums[:, leaf] = self.epsilon * (X[:, i] + 1)
 
-        logging.debug(f"nodes {self.nodes}")
-        logging.debug(f"results(pre traversal):\n{lca_sums}")
+        # logging.debug(f"nodes {self.nodes}")
+        # logging.debug(f"results(pre traversal):\n{lca_sums}")
 
         for node in self.postorder_traveral:
             if node not in self.leaves:
@@ -216,7 +216,7 @@ class WeightedLCANet(nn.Module):
                 # lca_normalized[:, node] = \
                 #     lca_sums[:, node] / (lca_sums[:, node] + self.epsilon)
         # result is now a (N, n_nodes) tensor
-        logging.debug(f"results(post traversal):\n{lca_sums}")
+        # logging.debug(f"results(post traversal):\n{lca_sums}")
         return lca_sums
 
 
@@ -264,6 +264,15 @@ class KrakenNet(nn.Module):
         # todo here is where the activation should go
         taxa_affinities = self.tanh(taxa_affinities)
         taxa_affinities = self.tanh_onto_0_to_1(taxa_affinities)
+
+        # try to make node 0 be 1 if no nodes are activated, otherwise make
+        #  it have activaiton close to 0. I believe this will also try to
+        #  increase the activation of the closest node if "unclassified" was
+        #  incorrect
+        # basically, if any node is 1, this will be 0, and if no nodes are
+        # 1, this will be 1 (in the near perfect case)
+        taxa_affinities[:, :, 0] = torch.add(
+            -taxa_affinities[:, :, 1:].max(dim=2)[0], 1.)
 
         root_to_node_sums = {
             0: taxa_affinities[:, :, 0],
