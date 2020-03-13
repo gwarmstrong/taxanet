@@ -1,8 +1,10 @@
+from collections import OrderedDict
 import torch
 from torch import nn
 import warnings
 import logging
 import sys
+from set_conv import DNAFilterConstructor
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 
@@ -240,6 +242,9 @@ class KrakenNet(nn.Module):
                                                self.nodes)
         self.tanh = nn.Tanh()
         self.tanh_onto_0_to_1 = tanh_onto_0_to_1
+        self.database = None
+        self.database_filters = None
+        self.filter_constructor = None
 
         # 1/2 tanh + 1/2
 
@@ -268,7 +273,8 @@ class KrakenNet(nn.Module):
         # try to make node 0 be 1 if no nodes are activated, otherwise make
         #  it have activaiton close to 0. I believe this will also try to
         #  increase the activation of the closest node if "unclassified" was
-        #  incorrect
+        #  incorrect. If it is incorrect, it will only force down the
+        #  highest target...
         # basically, if any node is 1, this will be 0, and if no nodes are
         # 1, this will be 1 (in the near perfect case)
         taxa_affinities[:, :, 0] = torch.add(
@@ -301,3 +307,34 @@ class KrakenNet(nn.Module):
 
         lca = self.weighted_lca_net(rtl_sums - rtl_sums.max())
         return lca
+
+    def init_from_database(self, database):
+        """
+
+        Parameters
+        ----------
+        database : dict of str to int
+            where the str is a kmer and int is node in the tree
+
+
+        Returns
+        -------
+
+        """
+        # TODO do some sanity checks on the database...
+        #  e.g., they are all length k, and all nodes are valid
+        self.database = OrderedDict(database)
+        self.database_filters = list(self.database.keys())
+
+        self.filter_constructor = DNAFilterConstructor()
+        filter_weights = self.filter_constructor.fit_transform(
+            self.database_filters)
+        conv = nn.Conv1d(4, 1, kernel_size=9, bias=False)
+        # print(conv.bias.shape)
+        # TODO -10 should be replace with more negative value... needs to be at
+        #  most (k - 10) so its pretty well into negative territory all but one
+        #  base matches
+        filter_weights_param = nn.Parameter(torch.tensor(filter_weights),
+                                            requires_grad=True)
+
+        self.kmer_filter.weight = filter_weights_param

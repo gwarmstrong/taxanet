@@ -1,5 +1,7 @@
 import unittest
+from unittest import mock
 import kraken_net
+import builtins
 import torch
 import numpy.testing as npt
 from kraken_net import (_read_nodes_dmp, _get_leaves_nodes, KrakenNet,
@@ -95,7 +97,45 @@ class KrakenNetTestCase(unittest.TestCase):
         self.assertTupleEqual((N, model.n_nodes), y.shape)
         y.sum().backward()
 
-    def test_WeightedLCANet(self):
+    def test_KrakenNet_correctness(self):
+        my_text = "some text to return when read() is called on the file " \
+                  "object"
+        N = 7
+        read_length = 5
+        kmer_length = 3
+        channels = 8
+        self.X = torch.randn(N, 4, read_length)
+        my_tree = \
+            "1   |   1   |   no rank |\n" \
+            "2   |   1   |   no rank |\n" \
+            "3   |   1   |   no rank |\n" \
+            "4   |   3   |   no rank |\n" \
+            "5   |   3   |   no rank |\n" \
+            "6   |   5   |   no rank |\n" \
+            "7   |   6   |   no rank |\n" \
+            "8   |   6   |   no rank |\n"
+        database = {
+            "AAT": 2,
+            "ATT": 3,
+            "ATA": 4,
+            "TTT": 5,
+            "TTC": 5,
+            "TTG": 6,
+            "TGC": 7,
+            "GCA": 8,
+        }
+        mocked_open_function = mock.mock_open(read_data=my_tree)
+        with mock.patch("builtins.open", mocked_open_function):
+            model = KrakenNet(kmer_length, channels, my_tree)
+
+        model.init_from_database(database)
+        print(model.kmer_filter.weight)
+
+        y = model(self.X)
+        self.assertTupleEqual((N, model.n_nodes), y.shape)
+        y.sum().backward()
+
+    def test_WeightedLCANet_simple(self):
         N = 20
         nodes_dmp = '../small_demo/taxonomy/nodes.dmp'
         tree = _read_nodes_dmp(nodes_dmp)
