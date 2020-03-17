@@ -307,13 +307,13 @@ class KrakenNet(nn.Module):
         # I think this is better with bias = False for now?
         self.kmer_filter = nn.Conv1d(4, num_channels,
                                      kernel_size=kmer_length, bias=False)
-        # self.linear_layer = nn.Linear(num_channels, self.n_nodes, bias=True)
+        self.linear_layer = nn.Linear(num_channels, self.n_nodes, bias=True)
         # switched to this layer because I need the positive parts of the
         # matrix mutliplication
         # https://stackoverflow.com/questions/47974959/numpy-matrix-
         #  multiplication-to-return-ndarray-not-sum
-        self.linear_layer = ReLUMiddleLinear(num_channels, self.n_nodes,
-                                             bias=True)
+        # self.linear_layer = ReLUMiddleLinear(num_channels, self.n_nodes,
+        #                                      bias=True)
         # LCA net has not parameters!
         self.weighted_lca_net = WeightedLCANet(self.tree, self.leaves,
                                                self.nodes)
@@ -343,9 +343,20 @@ class KrakenNet(nn.Module):
         # then needs to be reshaped to (N, L, nc) for linear layer...
         feature_map = self.kmer_filter(X).permute(0, 2, 1).contiguous()
         # returns shape (N, read_length - kmer_length + 1, n_nodes)
-        print("feature map0\n", feature_map[0])
-        print("feature map4\n", feature_map[4])
-        print("feature map4\n", feature_map[6])
+        # print("feature map0\n", feature_map[0])
+        # print("feature map1\n", feature_map[1])
+        # print("feature map3\n", feature_map[3])
+        # print("feature map4\n", feature_map[4])
+        # print("feature map5\n", feature_map[5])
+        # print("feature map6\n", feature_map[6])
+        feature_map = self.tanh(feature_map)
+        feature_map = self.tanh_onto_0_to_1(feature_map)
+        # print("feature map tanh0\n", feature_map[0])
+        # print("feature map tanh1\n", feature_map[1])
+        # print("feature map tanh3\n", feature_map[3])
+        # print("feature map tanh4\n", feature_map[4])
+        # print("feature map tanh5\n", feature_map[5])
+        # print("feature map tanh6\n", feature_map[6])
         taxa_affinities = self.linear_layer(feature_map)
         # todo here is where the activation should go
         print("taxaff raw\n", taxa_affinities)
@@ -453,7 +464,7 @@ class KrakenNet(nn.Module):
 
         print("db_filt", self.database_filters)
         print("positions", nonzero_positions_x, nonzero_positions_y)
-        kmer_map[nonzero_positions_x, nonzero_positions_y] = 10.
+        kmer_map[nonzero_positions_x, nonzero_positions_y] = 20.
         print("kmer_map 5", kmer_map[5, :])
         print("kmer_map\n", kmer_map)
         print("kmer_map_bias\n", kmer_map_bias)
