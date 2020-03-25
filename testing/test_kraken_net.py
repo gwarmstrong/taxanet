@@ -5,7 +5,8 @@ import numpy.testing as npt
 from kraken_net import (_read_nodes_dmp, _get_leaves_nodes, KrakenNet,
                         _preoder_traversal, _preoder_traversal_tuples,
                         _invert_tree, _postorder_traversal,
-                        WeightedLCANet,
+                        _get_nodes_to_leaves,
+                        WeightedLCANet, RootToLeafSums, MatrixRootToLeafSums,
                         )
 from set_conv import DNAStringOneHotEncoder
 
@@ -83,6 +84,29 @@ class KrakenNetTestCase(unittest.TestCase):
         exp_order = [(1, 3), (1, 2), (2, 4), (2, 5), (2, 6), (6, 8), (1, 7)]
         order = _preoder_traversal_tuples(nodes)
         self.assertListEqual(order, exp_order)
+
+    def test_get_nodes_to_leaves(self):
+        nodes = {
+            1: [3, 2, 7],
+            2: [4, 5, 6],
+            6: [8],
+        }
+        exp_dict = {0: [0],
+                    1: [3, 4, 5, 8, 7],
+                    2: [4, 5, 8],
+                    3: [3],
+                    4: [4],
+                    5: [5],
+                    6: [8],
+                    7: [7],
+                    8: [8],
+                    }
+        nodes = _get_nodes_to_leaves(nodes)
+        for key in nodes:
+            self.assertTrue(key in exp_dict)
+            self.assertCountEqual(nodes[key], exp_dict[key])
+        for key in exp_dict:
+            self.assertTrue(key in nodes)
 
     def test_KrakenNet(self):
         N = 20
@@ -230,6 +254,50 @@ class KrakenNetTestCase(unittest.TestCase):
         npt.assert_array_equal(obs_classes, exp_classes)
         self.assertTupleEqual((len(X), len(nodes)), y.shape)
         y.sum().backward()
+
+
+class TestRTLClasses(unittest.TestCase):
+
+    def _test_rtl_sums(self, class_):
+        c = class_(self.tree, self.leaves, n_nodes=9)
+        obs = c(self.counts)
+        obs.sum().backward()
+        npt.assert_array_almost_equal(obs.detach(), self.expected_rtl_sums)
+
+    def setUp(self):
+        self.tree = {
+            1: [2, 3],
+            2: [4, 5, 6],
+            3: [7, 8],
+        }
+        # nodes includes 0, which is unclassified
+        # leaves, nodes = _get_leaves_nodes(tree)
+
+        # override leaves to get the desired order
+        self.leaves = [0, 4, 5, 6, 7, 8]
+        self.counts = torch.tensor([
+        #   [0, 1, 2, 3, 4, 5, 6, 7, 8]  # these are the node numbers
+            [0, 1, 1, 1, 1, 1, 1, 1, 1],
+            [2, 0, 0, 1, 2, 0, 1, 0, 1],
+            [2, 0, 0, 0, 0, 0, 0, 0, 0],
+        ],
+            dtype=torch.float32, requires_grad=True,
+        )
+        self.expected_rtl_sums = torch.tensor([
+        #   [0, 4, 5, 6, 7, 8]  # these are the node numbers
+            [0, 3, 3, 3, 3, 3],
+            [2, 2, 0, 1, 1, 2],
+            [2, 0, 0, 0, 0, 0],
+        ],
+            dtype=torch.float32, requires_grad=False,
+        )
+
+    def test_RootToLeafSums(self):
+        self._test_rtl_sums(RootToLeafSums)
+
+    def test_MatrixRootToLeafSums(self):
+        self._test_rtl_sums(MatrixRootToLeafSums)
+
 
 if __name__ == '__main__':
     unittest.main()

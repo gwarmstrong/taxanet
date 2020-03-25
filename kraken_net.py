@@ -55,28 +55,6 @@ class ReLUMiddleLinear(nn.Module):
             self.in_features, self.out_features, self.bias is not None
         )
 
-def kronecker_product(t1, t2):
-    """
-    See: https://discuss.pytorch.org/t/kronecker-product/3919/4
-
-    Computes the Kronecker product between two tensors.
-    See https://en.wikipedia.org/wiki/Kronecker_product
-    """
-    t1_height, t1_width = t1.size()
-    t2_height, t2_width = t2.size()
-    out_height = t1_height * t2_height
-    out_width = t1_width * t2_width
-
-    tiled_t2 = t2.repeat(t1_height, t1_width)
-    expanded_t1 = (
-        t1.unsqueeze(2)
-          .unsqueeze(3)
-          .repeat(1, t2_height, t2_width, 1)
-          .view(out_height, out_width)
-    )
-
-    return expanded_t1 * tiled_t2
-
 
 def _read_nodes_dmp(fp):
     # TODO I'm sure Qiyun has written something like this
@@ -202,6 +180,21 @@ def _postorder_traversal(nodes, root=1, order=None):
     return order
 
 
+def _get_nodes_to_leaves(nodes, root=1, mapping=None):
+    if mapping is None:
+        mapping = {0: [0]}
+    mapping[root] = []
+    if root in nodes:
+        for child in nodes[root]:
+            _get_nodes_to_leaves(nodes, root=child, mapping=mapping)
+            mapping[root].extend(mapping[child])
+    else:
+        # it is a leaf, so give it itself as a "descending" leaf
+        mapping[root].append(root)
+
+    return mapping
+
+
 def tanh_onto_0_to_1(x):
     x = torch.mul(0.5, torch.add(x, 1))
     return x
@@ -320,8 +313,10 @@ class KrakenNet(nn.Module):
         #  multiplication-to-return-ndarray-not-sum
         # self.linear_layer = ReLUMiddleLinear(num_channels, self.n_nodes,
         #                                      bias=True)
-        self.root_to_leaf_sums = RootToLeafSums(self.tree, self.leaves)
-        # LCA net has not parameters!
+        self.root_to_leaf_sums = MatrixRootToLeafSums(self.tree, self.leaves,
+                                                      self.n_nodes
+                                                      )
+        # LCA net has no parameters!
         self.weighted_lca_net = WeightedLCANet(self.tree, self.leaves,
                                                self.nodes)
         self.tanh = nn.Tanh()
@@ -349,33 +344,13 @@ class KrakenNet(nn.Module):
         # returns shape (N, self.num_channels, read_length - kmer_length + 1)
         # then needs to be reshaped to (N, L, nc) for linear layer...
         feature_map = self.kmer_filter(X).permute(0, 2, 1).contiguous()
-        # returns shape (N, read_length - kmer_length + 1, n_nodes)
-        # print("feature map0\n", feature_map[0])
-        # print("feature map1\n", feature_map[1])
-        # print("feature map3\n", feature_map[3])
-        # print("feature map4\n", feature_map[4])
-        # print("feature map5\n", feature_map[5])
-        # print("feature map6\n", feature_map[6])
+        # returns shape (N, read_length - kmer_length + 1, n_channels)
         feature_map = self.tanh(feature_map)
         feature_map = self.tanh_onto_0_to_1(feature_map)
-        # print("feature map tanh0\n", feature_map[0])
-        # print("feature map tanh1\n", feature_map[1])
-        # print("feature map tanh3\n", feature_map[3])
-        # print("feature map tanh4\n", feature_map[4])
-        # print("feature map tanh5\n", feature_map[5])
-        # print("feature map tanh6\n", feature_map[6])
         taxa_affinities = self.linear_layer(feature_map)
-        # todo here is where the activation should go
-        # print("taxaff raw\n", taxa_affinities)
-        # taxa_affinities = self.relu(taxa_affinities)
+        # returns shape (N, n_nodes, read_length - kmer_length + 1)
         taxa_affinities = self.tanh(taxa_affinities)
         taxa_affinities = self.tanh_onto_0_to_1(taxa_affinities)
-
-        # try to make node 0 be 1 if no nodes are activated, otherwise make
-        #  it have activaiton close to 0. I believe this will also try to
-        #  increase the activation of the closest node if "unclassified" was
-        #  incorrect. If it is incorrect, it will only force down the
-        #  highest target...
 
         # TODO wait why did I not need this? bias term?
         # basically, if any node is 1, this will be 0, and if no nodes are
@@ -384,8 +359,11 @@ class KrakenNet(nn.Module):
         #     -taxa_affinities[:, :, 1:].max(dim=2)[0], 1.)
 
         # print("taxaff\n", taxa_affinities)
+        taxa_affinities = taxa_affinities.sum(dim=1)
         rtl_sums = self.root_to_leaf_sums(taxa_affinities)
 
+        # input to LCA will be (N, n_leaves)
+        # output from LCA wil be (N, n_nodes)
         lca = self.weighted_lca_net(rtl_sums)
         return lca
 
@@ -466,15 +444,17 @@ class KrakenNet(nn.Module):
 
 class RootToLeafSums(nn.Module):
 
-    def __init__(self, tree, leaves):
+    def __init__(self, tree, leaves, n_nodes):
         self.tree = tree
         self.leaves = leaves
+        self.n_nodes = n_nodes
         super().__init__()
 
     def forward(self, taxa_affinities):
+        # expects shape (N_samples, n_nodes)
         root_to_node_sums = {
-            0: taxa_affinities[:, :, 0],
-            1: taxa_affinities[:, :, 1],
+            0: taxa_affinities[:, 0],
+            1: taxa_affinities[:, 1],
         }
         # TODO ASSUMES root is 1
         # in a preorder traversal, the parent of a node will be calculated
@@ -484,7 +464,7 @@ class RootToLeafSums(nn.Module):
             if node in self.tree:
                 for child in self.tree[node]:
                     root_to_node_sums[child] = root_to_node_sums[node] + \
-                                               taxa_affinities[:, :, child]
+                                               taxa_affinities[:, child]
         # TODO assumes that all nodes are present in tree...
         # should be a (N, n_leaves, length - kmer_length + 1) tensor
         # Note: 0 (unclassified is included in this)
@@ -492,9 +472,31 @@ class RootToLeafSums(nn.Module):
                                 self.leaves],
                                dim=1,
                                )
-        rtl_sums = rtl_sums.sum(dim=2)
+        # rtl_sums = rtl_sums.sum(dim=2)
         # todo sum across the kmers. If padding is added, mask the sum...
-        # input to LCA will be (N, n_leaves)
-        # output from LCA wil be (N, n_nodes)
         return rtl_sums
 
+
+class MatrixRootToLeafSums(nn.Module):
+
+    def __init__(self, tree, leaves, n_nodes):
+        super().__init__()
+        self.tree = tree
+        self.leaves = {leaf: i for i, leaf in enumerate(leaves)}
+        self.n_nodes = n_nodes
+        self.linear = nn.Linear(self.n_nodes, len(leaves), bias=False)
+        self._init_weights(self.linear)
+
+    def forward(self, X):
+        # expects shape (N_samples, n_nodes)
+        # returns shape (N_samples, n_leaves)
+        return self.linear(X)
+
+    def _init_weights(self, layer):
+        layer.weight = nn.Parameter(torch.zeros_like(layer.weight),
+                                    requires_grad=False,
+                                    )
+        node_leaf_mapping = _get_nodes_to_leaves(self.tree)
+        for node, tips in node_leaf_mapping.items():
+            for leaf in tips:
+                layer.weight[self.leaves[leaf], node] = 1.
