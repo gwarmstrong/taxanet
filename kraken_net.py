@@ -320,6 +320,7 @@ class KrakenNet(nn.Module):
         #  multiplication-to-return-ndarray-not-sum
         # self.linear_layer = ReLUMiddleLinear(num_channels, self.n_nodes,
         #                                      bias=True)
+        self.root_to_leaf_sums = RootToLeafSums(self.tree, self.leaves)
         # LCA net has not parameters!
         self.weighted_lca_net = WeightedLCANet(self.tree, self.leaves,
                                                self.nodes)
@@ -383,30 +384,7 @@ class KrakenNet(nn.Module):
         #     -taxa_affinities[:, :, 1:].max(dim=2)[0], 1.)
 
         # print("taxaff\n", taxa_affinities)
-        root_to_node_sums = {
-            0: taxa_affinities[:, :, 0],
-            1: taxa_affinities[:, :, 1],
-        }
-        # TODO ASSUMES root is 1
-        # in a preorder traversal, the parent of a node will be calculated
-        # before it, so it is safe to pass on to their children
-        for node in _preoder_traversal(self.tree):
-            # pass on no
-            if node in self.tree:
-                for child in self.tree[node]:
-                    root_to_node_sums[child] = root_to_node_sums[node] + \
-                        taxa_affinities[:, :, child]
-        # TODO assumes that all nodes are present in tree...
-        # should be a (N, n_leaves, length - kmer_length + 1) tensor
-        # Note: 0 (unclassified is included in this)
-        rtl_sums = torch.stack([root_to_node_sums[i] for i in
-                               self.leaves],
-                               dim=1,
-                               )
-        rtl_sums = rtl_sums.sum(dim=2)
-        # todo sum across the kmers. If padding is added, mask the sum...
-        # input to LCA will be (N, n_leaves)
-        # output from LCA wil be (N, n_nodes)
+        rtl_sums = self.root_to_leaf_sums(taxa_affinities)
 
         lca = self.weighted_lca_net(rtl_sums)
         return lca
@@ -485,4 +463,38 @@ class KrakenNet(nn.Module):
         self.linear_layer.bias = kmer_map_bias
         self.linear_layer.weight = kmer_map_param
 
+
+class RootToLeafSums(nn.Module):
+
+    def __init__(self, tree, leaves):
+        self.tree = tree
+        self.leaves = leaves
+        super().__init__()
+
+    def forward(self, taxa_affinities):
+        root_to_node_sums = {
+            0: taxa_affinities[:, :, 0],
+            1: taxa_affinities[:, :, 1],
+        }
+        # TODO ASSUMES root is 1
+        # in a preorder traversal, the parent of a node will be calculated
+        # before it, so it is safe to pass on to their children
+        for node in _preoder_traversal(self.tree):
+            # pass on no
+            if node in self.tree:
+                for child in self.tree[node]:
+                    root_to_node_sums[child] = root_to_node_sums[node] + \
+                                               taxa_affinities[:, :, child]
+        # TODO assumes that all nodes are present in tree...
+        # should be a (N, n_leaves, length - kmer_length + 1) tensor
+        # Note: 0 (unclassified is included in this)
+        rtl_sums = torch.stack([root_to_node_sums[i] for i in
+                                self.leaves],
+                               dim=1,
+                               )
+        rtl_sums = rtl_sums.sum(dim=2)
+        # todo sum across the kmers. If padding is added, mask the sum...
+        # input to LCA will be (N, n_leaves)
+        # output from LCA wil be (N, n_nodes)
+        return rtl_sums
 
