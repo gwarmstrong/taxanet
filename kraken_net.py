@@ -220,7 +220,7 @@ class WeightedLCANet(nn.Module):
                                   " Recalculating both.")
             self.leaves, self.nodes = _get_leaves_nodes(self.tree)
         self.epsilon = 1e-5
-        self.max_value = 1 / (1 + self.epsilon)
+        self.max_value = 1 # / (1 + self.epsilon)
         self.postorder_traveral = _postorder_traversal(self.parent_to_children)
         self.relu = nn.ReLU()
         if not isinstance(self.leaves, list) and self.leaves:
@@ -247,7 +247,9 @@ class WeightedLCANet(nn.Module):
         maxes_rep = row_maxes.repeat_interleave(X.shape[1] - 1)\
             .view(X.shape[0], X.shape[1] - 1)
 
+        # sum_leaves lets us know if anything is non-zero, or if all are zero
         sum_leaves = maxes_rep.sum(dim=1)
+        # print("sum_leaves", sum_leaves)
         # Xmax_excl_unc[:, 1:], _ = X[:, 1:].max(dim=1)
         Xmax_excl_unc[:, 1:] = maxes_rep
         logging.debug(f"leaves: {self.leaves}")
@@ -266,6 +268,8 @@ class WeightedLCANet(nn.Module):
                 #  multiplied.
                 #  It was added to combat the problem of no nodes being
                 #  assigned
+                # sum_leaves can vary in scale, so I should pay attention
+                #  to this in theoretical calculations
                 lca_sums[:, leaf] = X[:, i] * (sum_leaves / (sum_leaves +
                                                            self.epsilon))
             else:
@@ -282,11 +286,13 @@ class WeightedLCANet(nn.Module):
                 for child in self.parent_to_children[node]:
                     # multiply by (1 - epsilon) so a parent is only larger
                     # than child if it has multiple descendents
-                    lca_sums[:, node] += (1 - self.epsilon) * lca_sums[:, child]
-                # result[:, node] *= result[:, node] / (result[:, node] +
-                #                                      self.epsilon)
-                # lca_normalized[:, node] = \
-                #     lca_sums[:, node] / (lca_sums[:, node] + self.epsilon)
+                    lca_sums[:, node] += lca_sums[:, child]
+                # norm_factor will make the sum greater than either
+                # children, if multiple children are non-zero, and will make
+                # it less than child if one child, and 0 if 0. Approximately
+                # 1 in first two cases.
+                norm_factor = (1 - self.epsilon)
+                lca_sums[:, node] *= norm_factor
         # result is now a (N, n_nodes) tensor
         # logging.debug(f"results(post traversal):\n{lca_sums}")
         return lca_sums
@@ -359,7 +365,7 @@ class KrakenNet(nn.Module):
         # print("feature map tanh6\n", feature_map[6])
         taxa_affinities = self.linear_layer(feature_map)
         # todo here is where the activation should go
-        print("taxaff raw\n", taxa_affinities)
+        # print("taxaff raw\n", taxa_affinities)
         # taxa_affinities = self.relu(taxa_affinities)
         taxa_affinities = self.tanh(taxa_affinities)
         taxa_affinities = self.tanh_onto_0_to_1(taxa_affinities)
@@ -369,12 +375,14 @@ class KrakenNet(nn.Module):
         #  increase the activation of the closest node if "unclassified" was
         #  incorrect. If it is incorrect, it will only force down the
         #  highest target...
+
+        # TODO wait why did I not need this? bias term?
         # basically, if any node is 1, this will be 0, and if no nodes are
         # 1, this will be 1 (in the near perfect case)
-        taxa_affinities[:, :, 0] = torch.add(
-            -taxa_affinities[:, :, 1:].max(dim=2)[0], 1.)
+        # taxa_affinities[:, :, 0] = torch.add(
+        #     -taxa_affinities[:, :, 1:].max(dim=2)[0], 1.)
 
-        print("taxaff\n", taxa_affinities)
+        # print("taxaff\n", taxa_affinities)
         root_to_node_sums = {
             0: taxa_affinities[:, :, 0],
             1: taxa_affinities[:, :, 1],
@@ -400,7 +408,7 @@ class KrakenNet(nn.Module):
         # input to LCA will be (N, n_leaves)
         # output from LCA wil be (N, n_nodes)
 
-        lca = self.weighted_lca_net(rtl_sums)#  - rtl_sums.max())
+        lca = self.weighted_lca_net(rtl_sums)
         return lca
 
     def init_from_database(self, database, requires_grad=True):
@@ -410,6 +418,8 @@ class KrakenNet(nn.Module):
         ----------
         database : dict of str to int
             where the str is a kmer and int is node in the tree
+        requires_grad : bool
+            whether the filter params require a gradient
 
 
         Returns
@@ -462,12 +472,12 @@ class KrakenNet(nn.Module):
             nonzero_positions_x.append(target_node)
             nonzero_positions_y.append(channel)
 
-        print("db_filt", self.database_filters)
-        print("positions", nonzero_positions_x, nonzero_positions_y)
+        # print("db_filt", self.database_filters)
+        # print("positions", nonzero_positions_x, nonzero_positions_y)
         kmer_map[nonzero_positions_x, nonzero_positions_y] = 20.
-        print("kmer_map 5", kmer_map[5, :])
-        print("kmer_map\n", kmer_map)
-        print("kmer_map_bias\n", kmer_map_bias)
+        # print("kmer_map 5", kmer_map[5, :])
+        # print("kmer_map\n", kmer_map)
+        # print("kmer_map_bias\n", kmer_map_bias)
         kmer_map_param = nn.Parameter(torch.tensor(kmer_map),
                                       requires_grad=requires_grad,
                                       )

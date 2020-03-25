@@ -1,7 +1,5 @@
 import unittest
 from unittest import mock
-import kraken_net
-import builtins
 import torch
 import numpy.testing as npt
 from kraken_net import (_read_nodes_dmp, _get_leaves_nodes, KrakenNet,
@@ -99,8 +97,6 @@ class KrakenNetTestCase(unittest.TestCase):
         y.sum().backward()
 
     def test_KrakenNet_correctness(self):
-        N = 7
-        read_length = 5
         kmer_length = 3
         channels = 8
         my_tree = \
