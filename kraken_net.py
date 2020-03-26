@@ -318,8 +318,10 @@ class KrakenNet(nn.Module):
                                                       self.n_nodes
                                                       )
         # LCA net has no parameters!
-        self.weighted_lca_net = WeightedLCANet(self.tree, self.leaves,
-                                               self.nodes)
+        self.weighted_lca_net = MatrixLCANet(self.tree, self.leaves,
+                                             self.nodes,
+                                             alpha=0.01,
+                                             )
         self.tanh = nn.Tanh()
         self.relu = nn.ReLU()
         self.tanh_onto_0_to_1 = tanh_onto_0_to_1
@@ -506,7 +508,9 @@ class MatrixRootToLeafSums(nn.Module):
 
 class MatrixLCANet(nn.Module):
 
-    def __init__(self, parent_to_children, leaves=None, nodes=None):
+    def __init__(self, parent_to_children, leaves=None, nodes=None,
+                 alpha=0.2,
+                 ):
         super().__init__()
         self.tree = parent_to_children
         if leaves is None or nodes is None:
@@ -529,7 +533,7 @@ class MatrixLCANet(nn.Module):
         self.tanh_onto_0_to_1 = tanh_onto_0_to_1
         self.max_value = 1
         # alpha controls how permissive the max thresholding is
-        self.alpha = 0.2
+        self.alpha = alpha
         self._init_weights()
 
     def forward(self, X):
@@ -539,6 +543,8 @@ class MatrixLCANet(nn.Module):
         #################################################
         # the scaling max onto 1 and rest onto 0 function
         #################################################
+        print("leaves", self.leaves)
+        print("input to LCA", X)
         if X.ndim != 2:
             raise ValueError(f"X expected to have 2 dimensions. Got "
                              f"{X.ndim}.")
@@ -551,20 +557,23 @@ class MatrixLCANet(nn.Module):
         #######
         row_maxes, _ = X[:, 1:].max(dim=1)
         normalization = ((1 - self.alpha) * row_maxes).unsqueeze(1)
-        # 5 below should probably be a parameter to control where on the
+        print("norm terms", X)
+        #         # 5 below should probably be a parameter to control where on the
         # tanh curve the max value ends up
         X = (X - normalization) * 5 * (1 / self.alpha)
         X = self.tanh(X)
         X = self.tanh_onto_0_to_1(X)
+        print("post-norm", X)
         #######
         # end
         #######
 
         X[:, 0] = 0
 
-        # now relu so only thing that score within max_value of the max are
         X = self.tanh_onto_0_to_1(self.tanh(self.leaves_to_ancestors(X)))
+        print("child to ancestor map", X)
         X = self.tanh_onto_0_to_1(self.tanh(self.children_to_parents(X)))
+        print("lca predictions", X)
         return X
 
     def _init_weights(self):
@@ -588,6 +597,7 @@ class MatrixLCANet(nn.Module):
         self.children_to_parents.bias *= -20.
 
         node_leaf_mapping = _get_nodes_to_leaves(self.tree)
+        print("node to descending leaves mapping: ", node_leaf_mapping)
         for node, tips in node_leaf_mapping.items():
             for leaf in tips:
                 # from leaf onto node
