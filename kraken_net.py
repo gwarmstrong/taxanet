@@ -196,6 +196,20 @@ def _get_nodes_to_leaves(nodes, root=1, mapping=None):
     return mapping
 
 
+def _get_nodes_to_all_descendents(nodes, root=1, mapping=None):
+    if mapping is None:
+        mapping = {0: {0}}
+    mapping[root] = set()
+    if root in nodes:
+        for child in nodes[root]:
+            _get_nodes_to_all_descendents(nodes, root=child, mapping=mapping)
+            mapping[root].update(mapping[child])
+            mapping[root].add(child)
+    else:
+        mapping[root].add(root)
+    return mapping
+
+
 def tanh_onto_0_to_1(x):
     x = torch.mul(0.5, torch.add(x, 1))
     return x
@@ -560,9 +574,14 @@ class MatrixLCANet(nn.Module):
         print("norm terms", X)
         #         # 5 below should probably be a parameter to control where on the
         # tanh curve the max value ends up
-        X = (X - normalization) * 5 * (1 / self.alpha)
+        X = 100 * ((X - normalization) * 5 * (1 / self.alpha) - 1)
+        print("mid-norm", X)
         X = self.tanh(X)
         X = self.tanh_onto_0_to_1(X)
+        # if all reads are unclassified, we will get (tanh(0) = 0.5),
+        #  so move them down and mulitply by 2 so max is still 1 and 0.5
+        #  gets moved to 0
+        # X = self.tanh_onto_0_to_1(self.tanh(20 * (X - 0.75)))
         print("post-norm", X)
         #######
         # end
@@ -570,10 +589,14 @@ class MatrixLCANet(nn.Module):
 
         X[:, 0] = 0
 
+        # map maximal-root-to-leaf-sum nodes to activate ancestors
         X = self.tanh_onto_0_to_1(self.tanh(self.leaves_to_ancestors(X)))
         print("child to ancestor map", X)
+        # activate any node with two activated children
         X = self.tanh_onto_0_to_1(self.tanh(self.children_to_parents(X)))
         print("lca predictions", X)
+        # TODO if it has an ancestor on, turn it off (since there is a
+        #  higher lca)
         return X
 
     def _init_weights(self):
@@ -593,7 +616,7 @@ class MatrixLCANet(nn.Module):
             torch.ones(self.n_nodes),
             requires_grad=False,
         )
-        self.leaves_to_ancestors.bias *= -20.
+        self.leaves_to_ancestors.bias *= -10.
         self.children_to_parents.bias *= -20.
 
         node_leaf_mapping = _get_nodes_to_leaves(self.tree)

@@ -5,7 +5,7 @@ import numpy.testing as npt
 from kraken_net import (_read_nodes_dmp, _get_leaves_nodes, KrakenNet,
                         _preoder_traversal, _preoder_traversal_tuples,
                         _invert_tree, _postorder_traversal,
-                        _get_nodes_to_leaves,
+                        _get_nodes_to_leaves, _get_nodes_to_all_descendents,
                         WeightedLCANet, RootToLeafSums,
                         MatrixRootToLeafSums, MatrixLCANet,
                         )
@@ -103,6 +103,29 @@ class KrakenNetTestCase(unittest.TestCase):
                     8: [8],
                     }
         nodes = _get_nodes_to_leaves(nodes)
+        for key in nodes:
+            self.assertTrue(key in exp_dict)
+            self.assertCountEqual(nodes[key], exp_dict[key])
+        for key in exp_dict:
+            self.assertTrue(key in nodes)
+
+    def test_get_nodes_to_descendents(self):
+        nodes = {
+            1: [3, 2, 7],
+            2: [4, 5, 6],
+            6: [8],
+        }
+        exp_dict = {0: [0],
+                    1: [2, 3, 4, 5, 6, 8, 7],
+                    2: [4, 5, 6, 8],
+                    3: [3],
+                    4: [4],
+                    5: [5],
+                    6: [8],
+                    7: [7],
+                    8: [8],
+                    }
+        nodes = _get_nodes_to_all_descendents(nodes)
         for key in nodes:
             self.assertTrue(key in exp_dict)
             self.assertCountEqual(nodes[key], exp_dict[key])
@@ -260,15 +283,15 @@ class TestLCANets(unittest.TestCase):
         self.assertTupleEqual((len(X), len(nodes)), y.shape)
         y.sum().backward()
 
-    # def test_WeightedLCANet_simple(self):
-    #     self._test_simple(WeightedLCANet)
-    #
-    # def test_WeightedLCANet(self):
-    #     self._test_net_perfect(WeightedLCANet)
-    #
-    # def test_WeightedLCANet_inexact(self):
-    #     self._test_net_inexact(WeightedLCANet)
-    #
+    def test_WeightedLCANet_simple(self):
+        self._test_simple(WeightedLCANet)
+
+    def test_WeightedLCANet(self):
+        self._test_net_perfect(WeightedLCANet)
+
+    def test_WeightedLCANet_inexact(self):
+        self._test_net_inexact(WeightedLCANet)
+
     # def test_MatrixLCANet_simple(self):
     #     self._test_simple(MatrixLCANet)
     #
