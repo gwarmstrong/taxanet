@@ -567,6 +567,7 @@ class MatrixLCANet(nn.Module):
         # alpha controls how permissive the max thresholding is
         self.alpha = alpha
         self._init_weights()
+        self.softmax = nn.Softmax(dim=1)
 
     def forward(self, X):
         # expects shape (N_samples, n_nodes)
@@ -615,8 +616,8 @@ class MatrixLCANet(nn.Module):
         # print("has multiple activated children", X)
         # TODO if it has an ancestor on, turn it off (since there is a
         #  higher lca)
-        X = self.tanh_onto_0_to_1(self.tanh(self.nodes_to_ancestors(X)))
-        # print("lca predictions", X)
+        # X = self.tanh_onto_0_to_1(self.tanh(self.nodes_to_ancestors(X)))
+        X = self.softmax(self.nodes_to_ancestors(X))
         return X
 
     def _init_weights(self):
