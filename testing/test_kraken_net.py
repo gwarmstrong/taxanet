@@ -173,7 +173,10 @@ class KrakenNetTestCase(unittest.TestCase):
         exp_classes = [1, 6, 0, 6, 6, 4, 6, 8, 7, 2, 3]
         npt.assert_array_equal(obs_classes, exp_classes)
 
-    def test_WeightedLCANet_simple(self):
+
+class TestLCANets(unittest.TestCase):
+
+    def _test_simple(self, class_):
         N = 20
         nodes_dmp = '../small_demo/taxonomy/nodes.dmp'
         tree = _read_nodes_dmp(nodes_dmp)
@@ -181,14 +184,13 @@ class KrakenNetTestCase(unittest.TestCase):
         # nodes includes 0, which is unclassified
         leaves, nodes = _get_leaves_nodes(tree)
 
-        model = WeightedLCANet(tree, leaves, nodes)
+        model = class_(tree, leaves, nodes)
         X = torch.randn(N, len(leaves), requires_grad=True)
         y = model(X)
         self.assertTupleEqual((N, len(nodes)), y.shape)
         y.sum().backward()
 
-    def test_WeightedLCANet(self):
-        N = 20
+    def _test_net_perfect(self, class_):
         tree = {
             1: [2, 3],
             2: [4, 5, 6],
@@ -199,7 +201,7 @@ class KrakenNetTestCase(unittest.TestCase):
 
         # override leaves to get the desired order
         leaves = [0, 4, 5, 6, 7, 8]
-        model = WeightedLCANet(tree, leaves, nodes)
+        model = class_(tree, leaves, nodes)
         X = torch.tensor([
             [0, 12, 12, 9, 10, 0],  # LCA is 2
             [0, 11, 11, 9, 10, 0],  # LCA is 2
@@ -222,7 +224,7 @@ class KrakenNetTestCase(unittest.TestCase):
         self.assertTupleEqual((len(X), len(nodes)), y.shape)
         y.sum().backward()
 
-    def test_WeightedLCANet_inexact(self):
+    def _test_net_inexact(self, class_):
         tree = {
             1: [2, 3],
             2: [4, 5, 6],
@@ -233,7 +235,7 @@ class KrakenNetTestCase(unittest.TestCase):
 
         # override leaves to get the desired order
         leaves = [0, 4, 5, 6, 7, 8]
-        model = WeightedLCANet(tree, leaves, nodes)
+        model = class_(tree, leaves, nodes)
         X = torch.tensor([
             [0, 12, 11.99, 9, 10, 0],  # LCA is 2
             [0, 11, 11, 9, 10, 0],  # LCA is 2
@@ -255,90 +257,24 @@ class KrakenNetTestCase(unittest.TestCase):
         npt.assert_array_equal(obs_classes, exp_classes)
         self.assertTupleEqual((len(X), len(nodes)), y.shape)
         y.sum().backward()
+
+    def test_WeightedLCANet_simple(self):
+        self._test_simple(WeightedLCANet)
+
+    def test_WeightedLCANet(self):
+        self._test_net_perfect(WeightedLCANet)
+
+    def test_WeightedLCANet_inexact(self):
+        self._test_net_inexact(WeightedLCANet)
 
     def test_MatrixLCANet_simple(self):
-        N = 20
-        nodes_dmp = '../small_demo/taxonomy/nodes.dmp'
-        tree = _read_nodes_dmp(nodes_dmp)
-
-        # nodes includes 0, which is unclassified
-        leaves, nodes = _get_leaves_nodes(tree)
-
-        model = MatrixLCANet(tree, leaves, nodes)
-        X = torch.randn(N, len(leaves), requires_grad=True)
-        y = model(X)
-        self.assertTupleEqual((N, len(nodes)), y.shape)
-        y.sum().backward()
+        self._test_simple(MatrixLCANet)
 
     def test_MatrixLCANet(self):
-        tree = {
-            1: [2, 3],
-            2: [4, 5, 6],
-            3: [7, 8],
-        }
-        # nodes includes 0, which is unclassified
-        leaves, nodes = _get_leaves_nodes(tree)
-
-        # override leaves to get the desired order
-        leaves = [0, 4, 5, 6, 7, 8]
-        model = MatrixLCANet(tree, leaves, nodes)
-        X = torch.tensor([
-            [0, 12, 12, 9, 10, 0],  # LCA is 2 # number are close but wrong
-            # becuase values given to 6 and 7 too
-            [0, 11, 11, 9, 10, 0],  # LCA is 2
-            [0,  4,  4, 3, 12, 0],  # LCA is 7 # wrong because other leaves on
-            # force 7 off
-            [0,  4,  4, 3,  9, 9],  # LCA is 3
-            [9,  0,  0, 0,  0, 0],  # LCA is 0
-            [1,  1,  0, 0,  0, 0],  # LCA is 4
-            [1,  5,  5, 5,  0, 0],  # LCA is 2
-        ],
-            requires_grad=True,
-            dtype=torch.float32,
-        )
-        y = model(X)
-        # printing y here can be useful for visualizing what the outputs
-        # look like
-        # print(y)
-        obs_classes = torch.argmax(y, 1)
-        exp_classes = [2, 2, 7, 3, 0, 4, 2]
-        y.sum().backward()
-        npt.assert_array_equal(obs_classes, exp_classes)
-        self.assertTupleEqual((len(X), len(nodes)), y.shape)
+        self._test_net_perfect(MatrixLCANet)
 
     def test_MatrixLCANet_inexact(self):
-        tree = {
-            1: [2, 3],
-            2: [4, 5, 6],
-            3: [7, 8],
-        }
-        # nodes includes 0, which is unclassified
-        leaves, nodes = _get_leaves_nodes(tree)
-
-        # override leaves to get the desired order
-        leaves = [0, 4, 5, 6, 7, 8]
-        model = MatrixLCANet(tree, leaves, nodes)
-        X = torch.tensor([
-            [0, 12, 11.99, 9, 10, 0],  # LCA is 2
-            [0, 11, 11, 9, 10, 0],  # LCA is 2
-            [0,  4,  4, 3, 12, 0],  # LCA is 7
-            [0,  4,  4, 3,  9, 8.1],  # LCA is 3
-            [9,  0,  0, 0,  0, 0],  # LCA is 0
-            [2,  1,  0, 0,  0, 0],  # LCA is 4
-            [1,  5.05,  5, 5,  0, 0],  # LCA is 2
-        ],
-            requires_grad=True,
-            dtype=torch.float32,
-        )
-        y = model(X)
-        # printing y here can be useful for visualizing what the outputs
-        # look like
-        # print(y)
-        obs_classes = torch.argmax(y, 1)
-        exp_classes = [2, 2, 7, 3, 0, 4, 2]
-        npt.assert_array_equal(obs_classes, exp_classes)
-        self.assertTupleEqual((len(X), len(nodes)), y.shape)
-        y.sum().backward()
+        self._test_net_inexact(MatrixLCANet)
 
 
 class TestRTLClasses(unittest.TestCase):
