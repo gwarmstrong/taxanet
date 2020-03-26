@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch.nn import init
+from itertools import product
 import warnings
 import logging
 import sys
@@ -474,6 +475,7 @@ class RootToLeafSums(nn.Module):
                                )
         # rtl_sums = rtl_sums.sum(dim=2)
         # todo sum across the kmers. If padding is added, mask the sum...
+        #  actually may not need to mask the sum? things will just be unmapped
         return rtl_sums
 
 
@@ -500,3 +502,124 @@ class MatrixRootToLeafSums(nn.Module):
         for node, tips in node_leaf_mapping.items():
             for leaf in tips:
                 layer.weight[self.leaves[leaf], node] = 1.
+
+
+class MatrixLCANet(nn.Module):
+
+    def __init__(self, parent_to_children, leaves=None, nodes=None):
+        super().__init__()
+        self.tree = parent_to_children
+        if leaves is None or nodes is None:
+            if leaves is not None or nodes is not None:
+                raise UserWarning("Received None for either leaves or nodes."
+                                  " Recalculating both.")
+            leaves, nodes = _get_leaves_nodes(self.tree)
+        self.leaves = {leaf: i for i, leaf in enumerate(leaves)}
+        self.n_leaves = len(self.leaves)
+        self.n_nodes = len(nodes)
+        self.nodes = nodes
+        self.leaves_to_ancestors = nn.Linear(self.n_leaves, self.n_nodes,
+                                             bias=True,
+                                             )
+        self.children_to_parents = nn.Linear(self.n_nodes, self.n_nodes,
+                                             bias=True,
+                                             )
+        self.tanh = nn.Tanh()
+        self.relu = nn.ReLU()
+        self.tanh_onto_0_to_1 = tanh_onto_0_to_1
+        self.max_value = 1
+        # alpha controls how permissive the max thresholding is
+        self.alpha = 0.2
+        self._init_weights()
+
+    def forward(self, X):
+        # expects shape (N_samples, n_nodes)
+        # returns shape (N_samples, n_leaves)
+        # TODO turn this into a function
+        #################################################
+        # the scaling max onto 1 and rest onto 0 function
+        #################################################
+        if X.ndim != 2:
+            raise ValueError(f"X expected to have 2 dimensions. Got "
+                             f"{X.ndim}.")
+        elif X.shape[1] != len(self.leaves):
+            raise ValueError(f"X expected to be of shape (N, "
+                             f"{len(self.leaves)}. Got (N, {X.shape[1]})")
+
+        #######
+        # try to get weights on to 0 and 1 based on max
+        #######
+        row_maxes, _ = X[:, 1:].max(dim=1)
+        normalization = ((1 - self.alpha) * row_maxes).unsqueeze(1)
+        # 5 below should probably be a parameter to control where on the
+        # tanh curve the max value ends up
+        X = (X - normalization) * 5 * (1 / self.alpha)
+        X = self.tanh(X)
+        X = self.tanh_onto_0_to_1(X)
+        #######
+        # end
+        #######
+
+        X[:, 0] = 0
+
+        # now relu so only thing that score within max_value of the max are
+        X = self.tanh_onto_0_to_1(self.tanh(self.leaves_to_ancestors(X)))
+        X = self.tanh_onto_0_to_1(self.tanh(self.children_to_parents(X)))
+        return X
+
+    def _init_weights(self):
+        self.leaves_to_ancestors.weight = nn.Parameter(
+            torch.zeros(self.n_nodes, self.n_leaves),
+            requires_grad=False,
+        )
+        self.leaves_to_ancestors.bias = nn.Parameter(
+            torch.ones(self.n_nodes),
+            requires_grad=False,
+        )
+        self.children_to_parents.weight = nn.Parameter(
+            torch.zeros(self.n_nodes, self.n_nodes),
+            requires_grad=False,
+        )
+        self.children_to_parents.bias = nn.Parameter(
+            torch.ones(self.n_nodes),
+            requires_grad=False,
+        )
+        self.leaves_to_ancestors.bias *= -20.
+        self.children_to_parents.bias *= -20.
+
+        node_leaf_mapping = _get_nodes_to_leaves(self.tree)
+        for node, tips in node_leaf_mapping.items():
+            for leaf in tips:
+                # from leaf onto node
+                # set bias from leaf to ancestor so it needs multiple leaves
+                # on to turn on
+                self.leaves_to_ancestors.weight[node, self.leaves[leaf]] = 15.
+                # set leaf to leaf bias so that a single leaf can activate leaf
+                self.leaves_to_ancestors.bias[leaf] = -10.
+
+        node_child_mapping = self.tree
+        for node, children in node_child_mapping.items():
+            for child in children:
+                # from child onto node
+                self.children_to_parents.weight[node, child] = 15.
+
+        leaves = self.leaves.keys()
+        for leaf1, leaf2 in product(leaves, leaves):
+            # from child onto node
+            if leaf1 == leaf2:
+                # turn leaf on if it is on
+                self.children_to_parents.weight[leaf1, leaf1] = 15.
+                # each leaf should meet this condition once, so give it bias
+                #  here
+                self.children_to_parents.bias[leaf1] = -5.
+            else:
+                # turn leaf off if other leaves are on
+                self.children_to_parents.weight[leaf1, leaf2] = -15.
+
+        # 0 has a tendency to be on, but is off if any nodes are on
+        self.children_to_parents.bias[0] = 5
+        for node in self.nodes:
+            # from child onto node
+            self.children_to_parents.weight[node, 0] = -15.
+
+
