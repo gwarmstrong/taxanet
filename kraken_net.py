@@ -538,7 +538,7 @@ class MatrixRootToLeafSums(nn.Module):
 class MatrixLCANet(nn.Module):
 
     def __init__(self, parent_to_children, leaves=None, nodes=None,
-                 alpha=0.2,
+                 alpha=0.05,
                  ):
         super().__init__()
         self.tree = parent_to_children
@@ -612,9 +612,11 @@ class MatrixLCANet(nn.Module):
         print("child to ancestor map", X)
         # activate any node with two activated children
         X = self.tanh_onto_0_to_1(self.tanh(self.children_to_parents(X)))
-        print("lca predictions", X)
+        print("has multiple activated children", X)
         # TODO if it has an ancestor on, turn it off (since there is a
         #  higher lca)
+        X = self.tanh_onto_0_to_1(self.tanh(self.nodes_to_ancestors(X)))
+        print("lca predictions", X)
         return X
 
     def _init_weights(self):
@@ -634,8 +636,21 @@ class MatrixLCANet(nn.Module):
             torch.ones(self.n_nodes),
             requires_grad=False,
         )
+        self.nodes_to_ancestors.weight = nn.Parameter(
+            torch.zeros(self.n_nodes, self.n_nodes),
+            requires_grad=False,
+        )
+        self.nodes_to_ancestors.bias = nn.Parameter(
+            torch.ones(self.n_nodes),
+            requires_grad=False,
+        )
+        # a parent can be activated if any one of its children is on
         self.leaves_to_ancestors.bias *= -10.
+        # a node needs two children on to be activated
         self.children_to_parents.bias *= -20.
+        # a node has a tendency to be off, can be activated by itself,
+        # but turned off by any ancestor
+        self.nodes_to_ancestors.bias *= -10.
 
         node_leaf_mapping = _get_nodes_to_leaves(self.tree)
         print("node to descending leaves mapping: ", node_leaf_mapping)
@@ -663,9 +678,23 @@ class MatrixLCANet(nn.Module):
                 # each leaf should meet this condition once, so give it bias
                 #  here
                 self.children_to_parents.bias[leaf1] = -5.
+            # else:
+            #     # turn leaf off if other leaves are on
+            #     self.children_to_parents.weight[leaf1, leaf2] = -15.
+
+        node_ancestor_mapping = _get_nodes_to_all_ancestors(self.tree)
+        # a node has a tendency to be off (-10), can be activated by itself
+        # (20), but turned off by any ancestor (-30)
+        for node in node_ancestor_mapping:
+            if node == 0:
+                # has a tendency to be unclassified
+                self.nodes_to_ancestors.bias[0] = 10.
+                # but is not unclassified if anything is classified
+                self.nodes_to_ancestors.weight[0, 1:] = -20.
             else:
-                # turn leaf off if other leaves are on
-                self.children_to_parents.weight[leaf1, leaf2] = -15.
+                self.nodes_to_ancestors.weight[node, node] = 20.
+            for ancestor in node_ancestor_mapping[node]:
+                self.nodes_to_ancestors.weight[node, ancestor] = -30.
 
         # 0 has a tendency to be on, but is off if any nodes are on
         self.children_to_parents.bias[0] = 5
