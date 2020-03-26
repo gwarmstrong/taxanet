@@ -575,8 +575,8 @@ class MatrixLCANet(nn.Module):
         #################################################
         # the scaling max onto 1 and rest onto 0 function
         #################################################
-        print("leaves", self.leaves)
-        print("input to LCA", X)
+        # print("leaves", self.leaves)
+        # print("input to LCA", X)
         if X.ndim != 2:
             raise ValueError(f"X expected to have 2 dimensions. Got "
                              f"{X.ndim}.")
@@ -589,18 +589,18 @@ class MatrixLCANet(nn.Module):
         #######
         row_maxes, _ = X[:, 1:].max(dim=1)
         normalization = ((1 - self.alpha) * row_maxes).unsqueeze(1)
-        print("norm terms", X)
+        # print("norm terms", X)
         #         # 5 below should probably be a parameter to control where on the
         # tanh curve the max value ends up
         X = 100 * ((X - normalization) * 5 * (1 / self.alpha) - 1)
-        print("mid-norm", X)
+        # print("mid-norm", X)
         X = self.tanh(X)
         X = self.tanh_onto_0_to_1(X)
         # if all reads are unclassified, we will get (tanh(0) = 0.5),
         #  so move them down and mulitply by 2 so max is still 1 and 0.5
         #  gets moved to 0
         # X = self.tanh_onto_0_to_1(self.tanh(20 * (X - 0.75)))
-        print("post-norm", X)
+        # print("post-norm", X)
         #######
         # end
         #######
@@ -609,14 +609,14 @@ class MatrixLCANet(nn.Module):
 
         # map maximal-root-to-leaf-sum nodes to activate ancestors
         X = self.tanh_onto_0_to_1(self.tanh(self.leaves_to_ancestors(X)))
-        print("child to ancestor map", X)
+        # print("child to ancestor map", X)
         # activate any node with two activated children
         X = self.tanh_onto_0_to_1(self.tanh(self.children_to_parents(X)))
-        print("has multiple activated children", X)
+        # print("has multiple activated children", X)
         # TODO if it has an ancestor on, turn it off (since there is a
         #  higher lca)
         X = self.tanh_onto_0_to_1(self.tanh(self.nodes_to_ancestors(X)))
-        print("lca predictions", X)
+        # print("lca predictions", X)
         return X
 
     def _init_weights(self):
@@ -653,7 +653,7 @@ class MatrixLCANet(nn.Module):
         self.nodes_to_ancestors.bias *= -10.
 
         node_leaf_mapping = _get_nodes_to_leaves(self.tree)
-        print("node to descending leaves mapping: ", node_leaf_mapping)
+        # print("node to descending leaves mapping: ", node_leaf_mapping)
         for node, tips in node_leaf_mapping.items():
             for leaf in tips:
                 # from leaf onto node

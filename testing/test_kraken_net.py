@@ -157,17 +157,17 @@ class KrakenNetTestCase(unittest.TestCase):
         for key in exp_dict:
             self.assertTrue(key in nodes)
 
-    # def test_KrakenNet(self):
-    #     N = 20
-    #     read_length = 30
-    #     kmer_length = 9
-    #     channels = 5
-    #     nodes_dmp = '../small_demo/taxonomy/nodes.dmp'
-    #     self.X = torch.randn(N, 4, read_length)
-    #     model = KrakenNet(kmer_length, channels, nodes_dmp)
-    #     y = model(self.X)
-    #     self.assertTupleEqual((N, model.n_nodes), y.shape)
-    #     y.sum().backward()
+    def test_KrakenNet(self):
+        N = 20
+        read_length = 30
+        kmer_length = 9
+        channels = 5
+        nodes_dmp = '../small_demo/taxonomy/nodes.dmp'
+        self.X = torch.randn(N, 4, read_length)
+        model = KrakenNet(kmer_length, channels, nodes_dmp)
+        y = model(self.X)
+        self.assertTupleEqual((N, model.n_nodes), y.shape)
+        y.sum().backward()
 
     def test_KrakenNet_correctness(self):
         kmer_length = 3
