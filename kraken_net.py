@@ -210,6 +210,21 @@ def _get_nodes_to_all_descendents(nodes, root=1, mapping=None):
     return mapping
 
 
+def _get_nodes_to_all_ancestors(nodes, root=1, ancestors=None):
+    if ancestors is None:
+        ancestors = {0: set()}
+    if root not in ancestors:
+        ancestors[root] = set()
+    if root in nodes:
+        for child in nodes[root]:
+            if child not in ancestors:
+                ancestors[child] = set()
+            ancestors[child].update(ancestors[root])
+            ancestors[child].add(root)
+            _get_nodes_to_all_ancestors(nodes, root=child, ancestors=ancestors)
+    return ancestors
+
+
 def tanh_onto_0_to_1(x):
     x = torch.mul(0.5, torch.add(x, 1))
     return x
@@ -542,6 +557,9 @@ class MatrixLCANet(nn.Module):
         self.children_to_parents = nn.Linear(self.n_nodes, self.n_nodes,
                                              bias=True,
                                              )
+        self.nodes_to_ancestors = nn.Linear(self.n_nodes, self.n_nodes,
+                                            bias=True,
+                                            )
         self.tanh = nn.Tanh()
         self.relu = nn.ReLU()
         self.tanh_onto_0_to_1 = tanh_onto_0_to_1

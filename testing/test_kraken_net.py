@@ -6,6 +6,7 @@ from kraken_net import (_read_nodes_dmp, _get_leaves_nodes, KrakenNet,
                         _preoder_traversal, _preoder_traversal_tuples,
                         _invert_tree, _postorder_traversal,
                         _get_nodes_to_leaves, _get_nodes_to_all_descendents,
+                        _get_nodes_to_all_ancestors,
                         WeightedLCANet, RootToLeafSums,
                         MatrixRootToLeafSums, MatrixLCANet,
                         )
@@ -129,6 +130,30 @@ class KrakenNetTestCase(unittest.TestCase):
         for key in nodes:
             self.assertTrue(key in exp_dict)
             self.assertCountEqual(nodes[key], exp_dict[key])
+        for key in exp_dict:
+            self.assertTrue(key in nodes)
+
+    def test_get_nodes_to_ancestors(self):
+        nodes = {
+            1: [3, 2, 7],
+            2: [4, 5, 6],
+            6: [8],
+        }
+        exp_dict = {0: [],
+                    1: [],
+                    2: [1],
+                    3: [1],
+                    4: [1, 2],
+                    5: [1, 2],
+                    6: [1, 2],
+                    7: [1],
+                    8: [1, 2, 6],
+                    }
+        nodes = _get_nodes_to_all_ancestors(nodes)
+        for key in nodes:
+            self.assertTrue(key in exp_dict)
+            self.assertCountEqual(nodes[key], exp_dict[key],
+                                  msg=f"node: {key}, all obs: {nodes}")
         for key in exp_dict:
             self.assertTrue(key in nodes)
 
@@ -292,14 +317,14 @@ class TestLCANets(unittest.TestCase):
     def test_WeightedLCANet_inexact(self):
         self._test_net_inexact(WeightedLCANet)
 
-    # def test_MatrixLCANet_simple(self):
-    #     self._test_simple(MatrixLCANet)
-    #
-    # def test_MatrixLCANet(self):
-    #     self._test_net_perfect(MatrixLCANet)
-    #
-    # def test_MatrixLCANet_inexact(self):
-    #     self._test_net_inexact(MatrixLCANet)
+    def test_MatrixLCANet_simple(self):
+        self._test_simple(MatrixLCANet)
+
+    def test_MatrixLCANet(self):
+        self._test_net_perfect(MatrixLCANet)
+
+    def test_MatrixLCANet_inexact(self):
+        self._test_net_inexact(MatrixLCANet)
 
 
 class TestRTLClasses(unittest.TestCase):
