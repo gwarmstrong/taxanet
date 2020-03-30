@@ -214,7 +214,6 @@ class KrakenNetTestCase(unittest.TestCase):
 
         # weird, but I have to
         model.init_from_database(database, requires_grad=True)
-        # model.weighted_lca_net.alpha = 0.5
 
         y = model(X)
         # self.assertTupleEqual((N, model.n_nodes), y.shape)

@@ -323,7 +323,8 @@ class WeightedLCANet(nn.Module):
 
 class KrakenNet(nn.Module):
 
-    def __init__(self, kmer_length, num_channels, nodes_dmp):
+    def __init__(self, kmer_length, num_channels, nodes_dmp,
+                 train_lca=False, train_rtl_sums=False):
         super().__init__()
         self.tree = _read_nodes_dmp(nodes_dmp)
         self.children_to_parent = _invert_tree(self.tree)
@@ -343,13 +344,14 @@ class KrakenNet(nn.Module):
         #  multiplication-to-return-ndarray-not-sum
         # self.linear_layer = ReLUMiddleLinear(num_channels, self.n_nodes,
         #                                      bias=True)
-        self.root_to_leaf_sums = MatrixRootToLeafSums(self.tree, self.leaves,
-                                                      self.n_nodes
-                                                      )
-        # LCA net has no parameters!
+        self.root_to_leaf_sums = MatrixRootToLeafSums(
+            self.tree, self.leaves, self.n_nodes,
+            requires_grad=train_rtl_sums,
+        )
         self.weighted_lca_net = MatrixLCANet(self.tree, self.leaves,
                                              self.nodes,
                                              alpha=0.01,
+                                             requires_grad=train_lca,
                                              )
         self.tanh = nn.Tanh()
         self.relu = nn.ReLU()
@@ -375,6 +377,17 @@ class KrakenNet(nn.Module):
 
         # returns shape (N, self.num_channels, read_length - kmer_length + 1)
         # then needs to be reshaped to (N, L, nc) for linear layer...
+        taxa_affinities = self.map_kmers_to_nodes(X)
+
+        taxa_affinities = taxa_affinities.sum(dim=1)
+        rtl_sums = self.root_to_leaf_sums(taxa_affinities)
+
+        # input to LCA will be (N, n_leaves)
+        # output from LCA wil be (N, n_nodes)
+        lca = self.weighted_lca_net(rtl_sums)
+        return lca
+
+    def map_kmers_to_nodes(self, X):
         feature_map = self.kmer_filter(X).permute(0, 2, 1).contiguous()
         # returns shape (N, read_length - kmer_length + 1, n_channels)
         feature_map = self.tanh(feature_map)
@@ -383,21 +396,7 @@ class KrakenNet(nn.Module):
         # returns shape (N, n_nodes, read_length - kmer_length + 1)
         taxa_affinities = self.tanh(taxa_affinities)
         taxa_affinities = self.tanh_onto_0_to_1(taxa_affinities)
-
-        # TODO wait why did I not need this? bias term?
-        # basically, if any node is 1, this will be 0, and if no nodes are
-        # 1, this will be 1 (in the near perfect case)
-        # taxa_affinities[:, :, 0] = torch.add(
-        #     -taxa_affinities[:, :, 1:].max(dim=2)[0], 1.)
-
-        # print("taxaff\n", taxa_affinities)
-        taxa_affinities = taxa_affinities.sum(dim=1)
-        rtl_sums = self.root_to_leaf_sums(taxa_affinities)
-
-        # input to LCA will be (N, n_leaves)
-        # output from LCA wil be (N, n_nodes)
-        lca = self.weighted_lca_net(rtl_sums)
-        return lca
+        return taxa_affinities
 
     def init_from_database(self, database, requires_grad=True):
         """
@@ -512,36 +511,38 @@ class RootToLeafSums(nn.Module):
 
 class MatrixRootToLeafSums(nn.Module):
 
-    def __init__(self, tree, leaves, n_nodes):
+    def __init__(self, tree, leaves, n_nodes, requires_grad=False):
         super().__init__()
         self.tree = tree
         self.leaves = {leaf: i for i, leaf in enumerate(leaves)}
         self.n_nodes = n_nodes
         self.linear = nn.Linear(self.n_nodes, len(leaves), bias=False)
-        self._init_weights(self.linear)
+        self._init_weights(self.linear, requires_grad=requires_grad)
 
     def forward(self, X):
         # expects shape (N_samples, n_nodes)
         # returns shape (N_samples, n_leaves)
         return self.linear(X)
 
-    def _init_weights(self, layer):
-        layer.weight = nn.Parameter(torch.zeros_like(layer.weight),
-                                    requires_grad=False,
-                                    )
-        node_leaf_mapping = _get_nodes_to_leaves(self.tree)
-        for node, tips in node_leaf_mapping.items():
-            for leaf in tips:
-                layer.weight[self.leaves[leaf], node] = 1.
+    def _init_weights(self, layer, requires_grad=False):
+        if not requires_grad:
+            layer.weight = nn.Parameter(torch.zeros_like(layer.weight),
+                                        requires_grad=requires_grad,
+                                        )
+            node_leaf_mapping = _get_nodes_to_leaves(self.tree)
+            for node, tips in node_leaf_mapping.items():
+                for leaf in tips:
+                    layer.weight[self.leaves[leaf], node] = 1.
 
 
 class MatrixLCANet(nn.Module):
 
     def __init__(self, parent_to_children, leaves=None, nodes=None,
-                 alpha=0.05,
+                 alpha=0.05, requires_grad=False, normalize=True,
                  ):
         super().__init__()
         self.tree = parent_to_children
+        self.normalize = normalize
         if leaves is None or nodes is None:
             if leaves is not None or nodes is not None:
                 raise UserWarning("Received None for either leaves or nodes."
@@ -566,7 +567,7 @@ class MatrixLCANet(nn.Module):
         self.max_value = 1
         # alpha controls how permissive the max thresholding is
         self.alpha = alpha
-        self._init_weights()
+        self._init_weights(requires_grad=requires_grad)
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, X):
@@ -588,12 +589,11 @@ class MatrixLCANet(nn.Module):
         #######
         # try to get weights on to 0 and 1 based on max
         #######
-        row_maxes, _ = X[:, 1:].max(dim=1)
-        normalization = ((1 - self.alpha) * row_maxes).unsqueeze(1)
-        # print("norm terms", X)
-        #         # 5 below should probably be a parameter to control where on the
-        # tanh curve the max value ends up
-        X = 100 * ((X - normalization) * 5 * (1 / self.alpha) - 1)
+        if self.normalize:
+            row_maxes, _ = X[:, 1:].max(dim=1)
+            normalization = ((1 - self.alpha) * row_maxes).unsqueeze(1)
+            X = 100 * ((X - normalization) * 5 * (1 / self.alpha) - 1)
+
         # print("mid-norm", X)
         X = self.tanh(X)
         X = self.tanh_onto_0_to_1(X)
@@ -617,90 +617,92 @@ class MatrixLCANet(nn.Module):
         # TODO if it has an ancestor on, turn it off (since there is a
         #  higher lca)
         # X = self.tanh_onto_0_to_1(self.tanh(self.nodes_to_ancestors(X)))
-        X = self.softmax(self.nodes_to_ancestors(X))
+        X = self.nodes_to_ancestors(X)
+        # X = self.softmax(X)
         return X
 
-    def _init_weights(self):
-        self.leaves_to_ancestors.weight = nn.Parameter(
-            torch.zeros(self.n_nodes, self.n_leaves),
-            requires_grad=False,
-        )
-        self.leaves_to_ancestors.bias = nn.Parameter(
-            torch.ones(self.n_nodes),
-            requires_grad=False,
-        )
-        self.children_to_parents.weight = nn.Parameter(
-            torch.zeros(self.n_nodes, self.n_nodes),
-            requires_grad=False,
-        )
-        self.children_to_parents.bias = nn.Parameter(
-            torch.ones(self.n_nodes),
-            requires_grad=False,
-        )
-        self.nodes_to_ancestors.weight = nn.Parameter(
-            torch.zeros(self.n_nodes, self.n_nodes),
-            requires_grad=False,
-        )
-        self.nodes_to_ancestors.bias = nn.Parameter(
-            torch.ones(self.n_nodes),
-            requires_grad=False,
-        )
-        # a parent can be activated if any one of its children is on
-        self.leaves_to_ancestors.bias *= -10.
-        # a node needs two children on to be activated
-        self.children_to_parents.bias *= -20.
-        # a node has a tendency to be off, can be activated by itself,
-        # but turned off by any ancestor
-        self.nodes_to_ancestors.bias *= -10.
+    def _init_weights(self, requires_grad=False):
+        if not requires_grad:
+            self.leaves_to_ancestors.weight = nn.Parameter(
+                torch.zeros(self.n_nodes, self.n_leaves),
+                requires_grad=requires_grad,
+            )
+            self.leaves_to_ancestors.bias = nn.Parameter(
+                torch.ones(self.n_nodes),
+                requires_grad=requires_grad,
+            )
+            self.children_to_parents.weight = nn.Parameter(
+                torch.zeros(self.n_nodes, self.n_nodes),
+                requires_grad=requires_grad,
+            )
+            self.children_to_parents.bias = nn.Parameter(
+                torch.ones(self.n_nodes),
+                requires_grad=requires_grad,
+            )
+            self.nodes_to_ancestors.weight = nn.Parameter(
+                torch.zeros(self.n_nodes, self.n_nodes),
+                requires_grad=requires_grad,
+            )
+            self.nodes_to_ancestors.bias = nn.Parameter(
+                torch.ones(self.n_nodes),
+                requires_grad=requires_grad,
+            )
+            # a parent can be activated if any one of its children is on
+            self.leaves_to_ancestors.bias *= -10.
+            # a node needs two children on to be activated
+            self.children_to_parents.bias *= -20.
+            # a node has a tendency to be off, can be activated by itself,
+            # but turned off by any ancestor
+            self.nodes_to_ancestors.bias *= -10.
 
-        node_leaf_mapping = _get_nodes_to_leaves(self.tree)
-        # print("node to descending leaves mapping: ", node_leaf_mapping)
-        for node, tips in node_leaf_mapping.items():
-            for leaf in tips:
-                # from leaf onto node
-                # set bias from leaf to ancestor so it needs multiple leaves
-                # on to turn on
-                self.leaves_to_ancestors.weight[node, self.leaves[leaf]] = 15.
-                # set leaf to leaf bias so that a single leaf can activate leaf
-                self.leaves_to_ancestors.bias[leaf] = -10.
+            node_leaf_mapping = _get_nodes_to_leaves(self.tree)
+            # print("node to descending leaves mapping: ", node_leaf_mapping)
+            for node, tips in node_leaf_mapping.items():
+                for leaf in tips:
+                    # from leaf onto node
+                    # set bias from leaf to ancestor so it needs multiple leaves
+                    # on to turn on
+                    self.leaves_to_ancestors.weight[node, self.leaves[leaf]] = 15.
+                    # set leaf to leaf bias so that a single leaf can activate leaf
+                    self.leaves_to_ancestors.bias[leaf] = -10.
 
-        node_child_mapping = self.tree
-        for node, children in node_child_mapping.items():
-            for child in children:
+            node_child_mapping = self.tree
+            for node, children in node_child_mapping.items():
+                for child in children:
+                    # from child onto node
+                    self.children_to_parents.weight[node, child] = 15.
+
+            leaves = self.leaves.keys()
+            for leaf1, leaf2 in product(leaves, leaves):
                 # from child onto node
-                self.children_to_parents.weight[node, child] = 15.
+                if leaf1 == leaf2:
+                    # turn leaf on if it is on
+                    self.children_to_parents.weight[leaf1, leaf1] = 15.
+                    # each leaf should meet this condition once, so give it bias
+                    #  here
+                    self.children_to_parents.bias[leaf1] = -5.
+                # else:
+                #     # turn leaf off if other leaves are on
+                #     self.children_to_parents.weight[leaf1, leaf2] = -15.
 
-        leaves = self.leaves.keys()
-        for leaf1, leaf2 in product(leaves, leaves):
-            # from child onto node
-            if leaf1 == leaf2:
-                # turn leaf on if it is on
-                self.children_to_parents.weight[leaf1, leaf1] = 15.
-                # each leaf should meet this condition once, so give it bias
-                #  here
-                self.children_to_parents.bias[leaf1] = -5.
-            # else:
-            #     # turn leaf off if other leaves are on
-            #     self.children_to_parents.weight[leaf1, leaf2] = -15.
+            node_ancestor_mapping = _get_nodes_to_all_ancestors(self.tree)
+            # a node has a tendency to be off (-10), can be activated by itself
+            # (20), but turned off by any ancestor (-30)
+            for node in node_ancestor_mapping:
+                if node == 0:
+                    # has a tendency to be unclassified
+                    self.nodes_to_ancestors.bias[0] = 10.
+                    # but is not unclassified if anything is classified
+                    self.nodes_to_ancestors.weight[0, 1:] = -20.
+                else:
+                    self.nodes_to_ancestors.weight[node, node] = 20.
+                for ancestor in node_ancestor_mapping[node]:
+                    self.nodes_to_ancestors.weight[node, ancestor] = -30.
 
-        node_ancestor_mapping = _get_nodes_to_all_ancestors(self.tree)
-        # a node has a tendency to be off (-10), can be activated by itself
-        # (20), but turned off by any ancestor (-30)
-        for node in node_ancestor_mapping:
-            if node == 0:
-                # has a tendency to be unclassified
-                self.nodes_to_ancestors.bias[0] = 10.
-                # but is not unclassified if anything is classified
-                self.nodes_to_ancestors.weight[0, 1:] = -20.
-            else:
-                self.nodes_to_ancestors.weight[node, node] = 20.
-            for ancestor in node_ancestor_mapping[node]:
-                self.nodes_to_ancestors.weight[node, ancestor] = -30.
-
-        # 0 has a tendency to be on, but is off if any nodes are on
-        self.children_to_parents.bias[0] = 5
-        for node in self.nodes:
-            # from child onto node
-            self.children_to_parents.weight[node, 0] = -15.
+            # 0 has a tendency to be on, but is off if any nodes are on
+            self.children_to_parents.bias[0] = 5
+            for node in self.nodes:
+                # from child onto node
+                self.children_to_parents.weight[node, 0] = -15.
 
 
