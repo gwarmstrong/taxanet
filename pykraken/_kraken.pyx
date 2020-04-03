@@ -64,6 +64,7 @@ cdef class PyKraken:
         cdef mapcpp[uint32_t, uint32_t] count_map
         for i in range(self._key_count()):
             taxa = self.db.taxa_at(i)[0]
+            # TODO make sure this won't result in segfault
             count_map[taxa] += 1
         return count_map
 
