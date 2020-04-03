@@ -131,29 +131,11 @@ def train_net():
         print(obs_classes, targets)
         acc = (obs_classes == targets).float().mean()
         print("accuracy", acc)
-        # print(f"obs prob {nn.Softmax(dim=1)(y)}")
         print(f"loss: {loss}")
         loss.backward()
-        # print(f"convs weights: {model.kmer_filter.weight})")
-        # print(f"grad convs: {model.kmer_filter.weight.grad})")
-        # print(f"linear grad: {model.linear_layer.weight.grad})")
-        # print(f"third to final layer grad: "
-        #       f"{model.weighted_lca_net.leaves_to_ancestors.weight.grad})")
-        # print(f"second to final layer grad: "
-        #       f"{model.weighted_lca_net.children_to_parents.weight.grad})")
-        # print(f"final layer grad: "
-        #       f"{model.weighted_lca_net.nodes_to_ancestors.weight.grad})")
-        # print(f"third to final layer: "
-        #       f"{model.weighted_lca_net.leaves_to_ancestors.weight})")
         optimizer.step()
         i += 1
-        # print(f"map kmers to nodes: {model.map_kmers_to_nodes(X).sum(dim=1)}")
-    # self.assertTupleEqual((N, model.n_nodes), y.shape)
-    # obs_classes = torch.argmax(y, 1)
-    # exp_classes = [1, 6, 0, 6, 6, 4, 6, 8, 7, 2, 3]
-    # npt.assert_array_equal(obs_classes, exp_classes)
 
-    print(model.kmer_filter.weight)
     plot_logos(model.kmer_filter.weight, alphabet=ohe.alphabet)
     plt.show()
 
@@ -236,7 +218,6 @@ def train_transformer():
                                                  'hue_order': hue_order,
                                                  })
     plt.show()
-
 
 
 if __name__ == "__main__":

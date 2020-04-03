@@ -1,12 +1,10 @@
 # disutils: language = c++
 
 from _ckraken cimport KrakenDB, QuickFile, KrakenDBIndex, KmerScanner, \
-    uint64_t, uint32_t, int64_t, build_parent_map, resolve_tree, int_vec, \
-    DNASequenceReader, FastqReader, FastaReader, DNASequence
+    uint64_t, uint32_t, int64_t, build_parent_map, resolve_tree, int_vec
 from libcpp.string cimport string
 from libcpp.map cimport map as mapcpp
 from libcpp cimport bool as boolcpp
-from libcpp.vector cimport vector
 
 cdef class PyKmerScanner:
     cdef KmerScanner *c_kmer_scanner
@@ -40,19 +38,14 @@ cdef class PyKraken:
         cdef string index_path_c_string = index_filename.encode()
         cdef string nodes_path_c_string = nodes_filename.encode()
         self.parent_map = build_parent_map(nodes_path_c_string)
-        print("parent map", self.parent_map)
         self.db_file.open_file(db_path_c_string)
         self.db_file.load_file()
         self.db = KrakenDB(self.db_file.ptr())
         self.idx_file.open_file(index_path_c_string)
         self.idx_file.load_file()
         self.index = KrakenDBIndex(self.idx_file.ptr())
-        print("Index opened!")
         self.db.set_index(&self.index)
-        print("Index set!")
         KmerScanner.set_k(self.db.get_k())
-        print("K set to {}".format(self.db.get_k()))
-        print("Done constructing.")
 
     @property
     def key_count(self):
@@ -114,18 +107,12 @@ cdef class PyKraken:
                 # use [0] to dereference as opposed to *
                 canon_rep = self.db.canonical_representation(kmer_ptr[0])
                 val_ptr = self.db.kmer_query(canon_rep,
-                                             # &current_bin_key,
-                                             # &current_min_pos,
-                                             # &current_max_pos,
+                                             # TODO add the bin key stuff
                     )
 
-            # print("kmer: {}".format(kmer_ptr[0]))
-            # print("val", val_ptr[0])
             taxon = val_ptr[0] if val_ptr else 0
-            print("taxon! {}".format(taxon))
             if taxon:
                 hit_counts[taxon] += 1
-            print("hit_counts", hit_counts)
 
             kmer_ptr = scanner.c_kmer_scanner.next_kmer()
 
