@@ -147,3 +147,6 @@ static
 
 # mac stuff
 .DS_Store
+
+# compiled cpp file
+pykraken/_kraken.cpp
