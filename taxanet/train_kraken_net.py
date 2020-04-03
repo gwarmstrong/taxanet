@@ -2,17 +2,16 @@ from unittest import mock
 import torch
 from torch import nn
 from torch import optim
-from kraken_net import KrakenNet
-from set_conv import DNAStringOneHotEncoder, default_alphabet
+from taxanet.kraken_net import KrakenNet
+from taxanet.set_conv import DNAStringOneHotEncoder, default_alphabet
 import logomaker
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
-from sklearn.decomposition import PCA
 from sklearn.manifold import MDS
 
-from transformer import TransformerNetwork
+from taxanet.transformer import TransformerNetwork
 
 
 def plot_logos(weight, bias=None, alphabet=None):

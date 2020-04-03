@@ -2,15 +2,15 @@ import unittest
 from unittest import mock
 import torch
 import numpy.testing as npt
-from kraken_net import (_read_nodes_dmp, _get_leaves_nodes, KrakenNet,
-                        _preoder_traversal, _preoder_traversal_tuples,
-                        _invert_tree, _postorder_traversal,
-                        _get_nodes_to_leaves, _get_nodes_to_all_descendents,
-                        _get_nodes_to_all_ancestors,
-                        WeightedLCANet, RootToLeafSums,
-                        MatrixRootToLeafSums, MatrixLCANet,
-                        )
-from set_conv import DNAStringOneHotEncoder
+from taxanet.kraken_net import (_read_nodes_dmp, _get_leaves_nodes, KrakenNet,
+                                _preoder_traversal, _preoder_traversal_tuples,
+                                _invert_tree, _postorder_traversal,
+                                _get_nodes_to_leaves, _get_nodes_to_all_descendents,
+                                _get_nodes_to_all_ancestors,
+                                WeightedLCANet, RootToLeafSums,
+                                MatrixRootToLeafSums, MatrixLCANet,
+                                )
+from taxanet.set_conv import DNAStringOneHotEncoder
 
 
 class KrakenNetTestCase(unittest.TestCase):

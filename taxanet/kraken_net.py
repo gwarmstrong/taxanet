@@ -5,10 +5,8 @@ import torch
 from torch import nn
 from torch.nn import init
 from itertools import product
-import warnings
 import logging
-import sys
-from set_conv import DNAFilterConstructor
+from taxanet.set_conv import DNAFilterConstructor
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 

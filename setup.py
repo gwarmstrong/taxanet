@@ -1,4 +1,4 @@
-from setuptools import setup, Extension
+from setuptools import setup, Extension, find_packages
 
 from Cython.Build import cythonize
 
@@ -37,7 +37,17 @@ extensions = [
 ]
 
 setup(
+    packages=find_packages(include=['taxanet.*']),
     ext_modules=cythonize(extensions, gdb_debug=DEBUG),
+    install_requires=[
+        'torch>=1.4',
+        'logomaker',
+        'pandas',
+        'matplotlib',
+        'seaborn',
+        'numpy',
+        'scikit-learn',
+    ]
 )
 
 # setup(
