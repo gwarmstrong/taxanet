@@ -27,14 +27,19 @@ cdef extern from "seqreader.hpp" namespace "kraken":
         string quals
 
     cdef cppclass DNASequenceReader:
-        DNASequence next_sequence()
-        bool is_valid()
+        pass
+        # DNASequence next_sequence()
+        # bool is_valid()
 
     cdef cppclass FastaReader(DNASequenceReader):
         FastaReader(string filename)
+        DNASequence next_sequence()
+        bool is_valid()
 
     cdef cppclass FastqReader(DNASequenceReader):
         FastqReader(string filename)
+        DNASequence next_sequence()
+        bool is_valid()
 
 
 
@@ -86,6 +91,8 @@ cdef extern from "krakendb.hpp" namespace "kraken":
         uint64_t get_val_len();     # how many bytes does each value occupy?
         uint64_t get_key_ct();      # how many key/value pairs are there?
         uint64_t pair_size();       # how many bytes does each pair occupy?
+        uint32_t* taxa_at(int64_t pos); # what taxa is at this position in
+        # the db?
 
         size_t header_size();  # Jellyfish uses variable header sizes
         uint32_t *kmer_query(uint64_t kmer);  # return ptr to pair w/ kmer

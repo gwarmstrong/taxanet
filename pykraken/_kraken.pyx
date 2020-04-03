@@ -1,7 +1,8 @@
 # disutils: language = c++
 
-from ckraken cimport KrakenDB, QuickFile, KrakenDBIndex, KmerScanner, \
-    uint64_t, uint32_t, int64_t, build_parent_map, resolve_tree, int_vec
+from _ckraken cimport KrakenDB, QuickFile, KrakenDBIndex, KmerScanner, \
+    uint64_t, uint32_t, int64_t, build_parent_map, resolve_tree, int_vec, \
+    DNASequenceReader, FastqReader, FastaReader, DNASequence
 from libcpp.string cimport string
 from libcpp.map cimport map as mapcpp
 from libcpp cimport bool as boolcpp
@@ -25,10 +26,6 @@ cdef class PyKmerScanner:
         self.kmer = self.c_kmer_scanner.next_kmer()
         self.is_ambiguous = self.c_kmer_scanner.ambig_kmer()
 
-    # def next_kmer(self):
-    #     cdef uint64_t *kmer
-    #     kmer = self.c_kmer_scanner.next_kmer()
-    #     return kmer
 
 cdef class PyKraken:
     cdef KrakenDB db
@@ -56,6 +53,26 @@ cdef class PyKraken:
         KmerScanner.set_k(self.db.get_k())
         print("K set to {}".format(self.db.get_k()))
         print("Done constructing.")
+
+    @property
+    def key_count(self):
+        return self._key_count()
+
+    @property
+    def k(self):
+        return self.db.get_k()
+
+    cdef _key_count(self):
+        cdef uint64_t count = self.db.get_key_ct()
+        return count
+
+    cpdef taxa_counts(self):
+        cdef uint32_t taxa
+        cdef mapcpp[uint32_t, uint32_t] count_map
+        for i in range(self._key_count()):
+            taxa = self.db.taxa_at(i)[0]
+            count_map[taxa] += 1
+        return count_map
 
     cpdef classify_reads(self, reads):
         cdef string current_string
@@ -113,36 +130,3 @@ cdef class PyKraken:
             kmer_ptr = scanner.c_kmer_scanner.next_kmer()
 
         return resolve_tree(hit_counts, self.parent_map)
-
-    # def __dealloc__(self):
-    #     del &self.db
-    #     del &self.index
-
-def main(str db_path):
-    # TODO db_path is unused
-    DB_filename = "../kraken-dbs/small_demo/database.kdb"
-    Index_filename = "../kraken-dbs/small_demo/database.idx"
-    nodes_filename = "../kraken-dbs/small_demo/taxonomy/nodes.dmp"
-
-    pk = PyKraken(DB_filename, Index_filename, nodes_filename)
-    read = "TACGTGAGACGGCAT"
-    print("{} classified as: {}".format(read, pk.classify_read(read)))
-    # print("also verified, K={}".format(pk.get_k()))
-    # cdef string db_path_c_string = DB_filename
-    # cdef string indx_path_c_string = Index_filename
-    # cdef QuickFile db_file
-    # cdef QuickFile idx_file
-    #
-    # print("Try opening files...")
-    # db_file.open_file(DB_filename)
-    # db_file.load_file()
-    # cdef KrakenDB Database = KrakenDB(db_file.ptr())
-    # print("Database opened!")
-    # idx_file.open_file(Index_filename)
-    # idx_file.load_file()
-    # cdef KrakenDBIndex db_index = KrakenDBIndex(idx_file.ptr())
-    # print("Index opened!")
-    # Database.set_index(&db_index)
-    # print("Index set!")
-    # KmerScanner.set_k(Database.get_k())
-    # print("K set to {}".format(Database.get_k()))

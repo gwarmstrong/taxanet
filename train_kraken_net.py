@@ -191,7 +191,7 @@ def train_transformer():
     model = TransformerNetwork(n_classes, kmer_length=4,
                                num_channels=10, nhead=5)
     loss_fn = nn.NLLLoss()
-    dist_loss_fn = nn.KLDivLoss()
+    # dist_loss_fn = nn.KLDivLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.0001)
     # for i in range(n_epochs):
     i = 0
@@ -205,8 +205,8 @@ def train_transformer():
         # print("y", y)
         probs = y.mean(dim=0)
         print("probs", probs)
-        # loss = loss_fn(torch.log(y), targets)
-        loss = dist_loss_fn(torch.log(probs), target_dist)
+        loss = loss_fn(torch.log(y), targets)
+        # loss = dist_loss_fn(torch.log(probs), target_dist)
         obs_classes = torch.argmax(y, 1)
         print(obs_classes, targets)
         acc = (obs_classes == targets).float().mean()
