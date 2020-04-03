@@ -107,7 +107,9 @@ cdef class PyKraken:
                 # use [0] to dereference as opposed to *
                 canon_rep = self.db.canonical_representation(kmer_ptr[0])
                 val_ptr = self.db.kmer_query(canon_rep,
-                                             # TODO add the bin key stuff
+                                             &current_bin_key,
+                                             &current_min_pos,
+                                             &current_max_pos,
                     )
 
             taxon = val_ptr[0] if val_ptr else 0
