@@ -16,8 +16,8 @@ extensions = [
                        'kraken_src/quickfile.cpp',
                        'kraken_src/krakenutil.cpp',
                        ],
-              extra_compile_args=["-std=c++11", "-Xpreprocessor",
-                                  ] + extra_flags,
+              extra_compile_args=["-std=c++11",
+                  ] + extra_flags,
               extra_link_args=[] + extra_flags,
               include_dirs=['./kraken_src/', "./"],
               library_dirs=['./kraken_src'],
@@ -27,7 +27,9 @@ extensions = [
 
 setup(
     packages=find_packages(include=['taxanet.*']),
-    ext_modules=cythonize(extensions, gdb_debug=DEBUG),
+    ext_modules=cythonize(extensions, gdb_debug=DEBUG,
+        compiler_directives={'language_level' : "3"},
+        ),
     install_requires=[
         'torch>=1.4',
         'logomaker',
