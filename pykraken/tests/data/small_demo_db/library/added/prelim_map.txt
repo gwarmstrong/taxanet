@@ -1,0 +1,9 @@
+TAXID	sequence1|kraken:taxid|3	3
+TAXID	sequence2|kraken:taxid|3	3
+TAXID	sequence3|kraken:taxid|4	4
+TAXID	sequence4|kraken:taxid|4	4
+TAXID	sequence5|kraken:taxid|5	5
+TAXID	sequence6|kraken:taxid|5	5
+TAXID	sequence7|kraken:taxid|6	6
+TAXID	sequence8|kraken:taxid|7	7
+TAXID	sequence9|kraken:taxid|7	7

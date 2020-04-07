@@ -28,8 +28,8 @@ extensions = [
 setup(
     packages=find_packages(include=['taxanet.*']),
     ext_modules=cythonize(extensions, gdb_debug=DEBUG,
-        compiler_directives={'language_level' : "3"},
-        ),
+                          compiler_directives={'language_level' : "3"},
+                          ),
     install_requires=[
         'torch>=1.4',
         'logomaker',
