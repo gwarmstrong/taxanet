@@ -1,8 +1,8 @@
-from unittest import TestCase
+import unittest
 from pykraken import PyKraken
 
 
-class TestPyKraken(TestCase):
+class TestPyKraken(unittest.TestCase):
 
     def test_pykraken_runs(self):
         DB_filename = "./data/small_demo_db/database.kdb"
@@ -20,3 +20,7 @@ class TestPyKraken(TestCase):
         print("Database k: {}".format(pk.k))
         print("Database number of Keys: {}".format(pk.key_count))
         print("Database taxa counts: {}".format(pk.taxa_counts()))
+
+
+if __name__ == "__main__":
+    unittest.main()
