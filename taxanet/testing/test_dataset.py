@@ -63,7 +63,6 @@ class FastaCollectionTestCase(TNTestCase):
         ]
 
         fa_collection = FastaCollection(files, 15)
-        print(fa_collection[119])
 
     def test_fast_collection_with_dataloader(self):
         files = [
@@ -77,7 +76,10 @@ class FastaCollectionTestCase(TNTestCase):
 
         for sample, label in loader:
             self.assertTupleEqual(sample.shape[1:], (15, 5))
-            self.assertTrue(label.issubset(set(fa_collection.labels)))
+            self.assertTrue(set(label.numpy()).issubset(set(
+                fa_collection.labels)))
+
+        self.assertEqual(fa_collection.n_classes, 2)
 
 
 if __name__ == '__main__':

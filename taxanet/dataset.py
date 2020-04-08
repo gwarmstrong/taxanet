@@ -132,6 +132,7 @@ class FastaCollection(Dataset):
         self.labels = np.hstack(all_labels)
         self.is_valid = 1 - np.isnan(self.labels)
         self.sampleable_indices, = np.nonzero(self.is_valid)
+        self.n_classes = len(set(self.labels[self.sampleable_indices]))
         self.labels = self.labels.astype(np.int, copy=False)
         self.length = len(self.sampleable_indices)
         if self.length <= 0:
@@ -148,5 +149,6 @@ class FastaCollection(Dataset):
 
     def __getitem__(self, idx):
         valid_idx = self.sampleable_indices[idx]
-        return one_hot(self.seqs[valid_idx:valid_idx + self.read_length]), \
+        return one_hot(self.seqs[valid_idx:valid_idx +
+                       self.read_length]).float(), \
             self.labels[valid_idx]
