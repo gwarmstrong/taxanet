@@ -76,15 +76,13 @@ def one_hot(seqs):
 
 def _file_mapper(seq, read_length, mapper, labels, file_,
                  ):
-    # TODO figure out these edge cases...
     if len(seq) > read_length - 1:
-        labels[:-read_length] = mapper(file_)
+        labels[:-read_length + 1] = mapper(file_)
 
 
 def _read_mapper(seq, read_length, mapper, labels, file_,
                  ):
     to_classify = []
-    # TODO figure out these edge cases...
     for i in range(len(seq) - read_length + 1):
         to_classify.append(seq[i:i+read_length])
     labels[:-read_length + 1] = mapper(to_classify)
@@ -152,9 +150,7 @@ class FastaCollection(Dataset):
         self.is_valid = 1 - np.isnan(self.labels)
         self.sampleable_indices, = np.nonzero(self.is_valid)
         self.labels = self.labels.astype(np.int, copy=False)
-        # TODO this should probably be max... also allow to set number of
-        #  classes, or be a property
-        self.n_classes = len(set(self.labels[self.sampleable_indices]))
+        self.n_classes = max(self.labels[self.sampleable_indices]) + 1
         self.length = len(self.sampleable_indices)
         if self.length <= 0:
             raise ValueError('No contig is long enough to sample for '
