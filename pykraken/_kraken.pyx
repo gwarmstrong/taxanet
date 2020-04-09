@@ -5,6 +5,7 @@ from _ckraken cimport KrakenDB, QuickFile, KrakenDBIndex, KmerScanner, \
 from libcpp.string cimport string
 from libcpp.map cimport map as mapcpp
 from libcpp cimport bool as boolcpp
+from libcpp.vector cimport vector
 
 cdef class PyKmerScanner:
     cdef KmerScanner *c_kmer_scanner
@@ -68,22 +69,17 @@ cdef class PyKraken:
             count_map[taxa] += 1
         return count_map
 
-    cpdef classify_reads(self, reads):
+    cpdef classify_reads(self, vector[string] reads):
         cdef string current_string
         cdef int_vec classes
         cdef int counter = 0
         classes = int_vec(len(reads))
-        for string_ in reads:
-            current_string = string_.encode()
-            classes[counter] = self._classify_read(current_string)
+        for current_string in reads:
+            classes[counter] = self.classify_read(current_string)
             counter += 1
         return classes
 
-    cpdef classify_read(self, str read):
-        cdef string to_classify = read.encode('UTF-8')
-        return self._classify_read(to_classify)
-
-    cdef _classify_read(self, string dna_seq):
+    cpdef classify_read(self, string dna_seq):
         cdef uint64_t *kmer_ptr = NULL
         cdef uint32_t taxon = 0
         cdef uint32_t hits = 0

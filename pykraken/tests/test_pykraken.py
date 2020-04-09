@@ -10,11 +10,12 @@ class TestPyKraken(unittest.TestCase):
         nodes_filename = "./data/small_demo_db/taxonomy/nodes.dmp"
 
         pk = PyKraken(DB_filename, Index_filename, nodes_filename)
-        read = "AGAAGCGAAGGTTCATATGGTCTGACGGATCTCTTCGAGCACCCGAGAATTCCA"
+        read = b"AGAAGCGAAGGTTCATATGGTCTGACGGATCTCTTCGAGCACCCGAGAATTCCA"
         print("{} classified as: {}".format(read, pk.classify_read(read)))
         print("read length: {}".format(len(read)))
 
-        reads = ["AGGGAGAGAGAGA", "AGAAGCGAAGGTTCAT", "CTGACGGATCTCTTCGAGCA", "CCGAGAATTCCA"]
+        reads = [b"AGGGAGAGAGAGA", b"AGAAGCGAAGGTTCAT",
+                 b"CTGACGGATCTCTTCGAGCA", b"CCGAGAATTCCA"]
         cls_ = pk.classify_reads(reads)
         print(cls_)
         print("Database k: {}".format(pk.k))

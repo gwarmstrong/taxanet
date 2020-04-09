@@ -1,6 +1,15 @@
 from setuptools import setup, Extension, find_packages
+import os
+import platform
+import minimap2
+import mmappy
 
 from Cython.Build import cythonize
+
+compiler_directives = dict()
+
+if platform.system() == 'Linux':
+    compiler_directives['language_level'] = '3'
 
 DEBUG = False
 
@@ -19,7 +28,8 @@ extensions = [
               extra_compile_args=["-std=c++11",
                   ] + extra_flags,
               extra_link_args=[] + extra_flags,
-              include_dirs=['./kraken_src/', "./"],
+              include_dirs=['./kraken_src/', "./",
+                            ],
               library_dirs=['./kraken_src'],
               language='c++',
               ),
@@ -28,7 +38,7 @@ extensions = [
 setup(
     packages=find_packages(include=['taxanet.*']),
     ext_modules=cythonize(extensions, gdb_debug=DEBUG,
-                          compiler_directives={'language_level' : "3"},
+                          compiler_directives=compiler_directives,
                           ),
     install_requires=[
         'torch>=1.4',
