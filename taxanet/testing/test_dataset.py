@@ -4,6 +4,7 @@ from taxanet.dataset import (one_hot, DefaultMapper, DictMapper,
                              FastaCollection,
                              )
 from taxanet.testing import TestCase as TNTestCase
+from pykraken import PyKraken
 from torch.utils.data import DataLoader
 
 
@@ -63,6 +64,42 @@ class FastaCollectionTestCase(TNTestCase):
         ]
 
         fa_collection = FastaCollection(files, 15)
+
+    def test_fasta_collection_pykraken_integration(self):
+        files = [
+            self.get_data_path('test1.fa'),
+            self.get_data_path('test2.fa'),
+        ]
+        DB_filename = self.get_data_path(
+            "small_demo_db/database.kdb", package='pykraken.tests',
+        )
+        Index_filename = self.get_data_path(
+            "small_demo_db/database.idx", package='pykraken.tests',
+        )
+        nodes_filename = self.get_data_path(
+            "small_demo_db/taxonomy/nodes.dmp",
+            package='pykraken.tests',
+        )
+
+        pk = PyKraken(DB_filename, Index_filename, nodes_filename)
+
+        def classifier(X):
+            """
+
+            Parameters
+            ----------
+            X : list of np.array of bytes
+
+            Returns
+            -------
+
+            """
+            to_classify = [x.tostring() for x in X]
+            return pk.classify_reads(to_classify)
+
+        fa_collection = FastaCollection(files, 15,
+                                        mapper=classifier,
+                                        mapper_type='read')
 
     def test_fast_collection_with_dataloader(self):
         files = [

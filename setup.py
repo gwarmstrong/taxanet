@@ -1,5 +1,8 @@
 from setuptools import setup, Extension, find_packages
+import os
 import platform
+import minimap2
+import mmappy
 
 from Cython.Build import cythonize
 
@@ -26,6 +29,8 @@ extensions = [
                   ] + extra_flags,
               extra_link_args=[] + extra_flags,
               include_dirs=['./kraken_src/', "./",
+                            os.path.dirname(minimap2.__file__),
+                            os.path.dirname(mmappy.__file__),
                             ],
               library_dirs=['./kraken_src'],
               language='c++',
@@ -33,6 +38,7 @@ extensions = [
 ]
 
 setup(
+    name='taxanet',
     packages=find_packages(include=['taxanet.*']),
     ext_modules=cythonize(extensions, gdb_debug=DEBUG,
                           compiler_directives=compiler_directives,

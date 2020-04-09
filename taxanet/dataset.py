@@ -74,7 +74,27 @@ def one_hot(seqs):
     return ohe
 
 
+def _file_mapper(seq, read_length, mapper, labels, file_,
+                 ):
+    # TODO figure out these edge cases...
+    if len(seq) > read_length - 1:
+        labels[:-read_length] = mapper(file_)
+
+
+def _read_mapper(seq, read_length, mapper, labels, file_,
+                 ):
+    to_classify = []
+    # TODO figure out these edge cases...
+    for i in range(len(seq) - read_length + 1):
+        to_classify.append(seq[i:i+read_length])
+    labels[:-read_length + 1] = mapper(to_classify)
+
+
 class FastaCollection(Dataset):
+
+    map_dict = {'file': _file_mapper,
+                'read': _read_mapper,
+                }
 
     def __init__(self, fasta_list, read_length, mapper=None,
                  mapper_type='file',
@@ -106,15 +126,13 @@ class FastaCollection(Dataset):
             self.class_map = class_map
         elif isinstance(mapper, dict):
             self.class_map = DictMapper(mapper)
-        elif isinstance(mapper, callable):
+        elif callable(mapper):
             self.class_map = mapper
         else:
             raise ValueError('map_fn must be dict, callable, or None. Got '
                              '{}'.format(type(mapper)))
 
-        map_dict = {'file': self.file_mapper,
-                    }
-        map_applier = map_dict[mapper_type]
+        map_applier = self.map_dict[mapper_type]
         all_seqs = []
         all_labels = []
 
@@ -124,7 +142,8 @@ class FastaCollection(Dataset):
             for seq in skbio.io.read(file_, format='fasta'):
                 all_seqs.append(seq.values)
                 labels = np.full_like(seq.values, np.nan, dtype=np.float)
-                map_applier(seq, read_length, self.class_map, labels, file_,
+                map_applier(seq.values, read_length, self.class_map, labels,
+                            file_,
                             )
                 all_labels.append(labels)
 
@@ -132,17 +151,14 @@ class FastaCollection(Dataset):
         self.labels = np.hstack(all_labels)
         self.is_valid = 1 - np.isnan(self.labels)
         self.sampleable_indices, = np.nonzero(self.is_valid)
-        self.n_classes = len(set(self.labels[self.sampleable_indices]))
         self.labels = self.labels.astype(np.int, copy=False)
+        # TODO this should probably be max... also allow to set number of
+        #  classes, or be a property
+        self.n_classes = len(set(self.labels[self.sampleable_indices]))
         self.length = len(self.sampleable_indices)
         if self.length <= 0:
             raise ValueError('No contig is long enough to sample for '
                              'read_length={}'.format(read_length))
-
-    def file_mapper(self, seq, read_length, mapper, labels, file_,
-                    ):
-        if len(seq) > read_length - 1:
-            labels[:-read_length] = mapper(file_)
 
     def __len__(self):
         return self.length
