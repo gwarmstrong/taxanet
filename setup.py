@@ -8,9 +8,6 @@ from Cython.Build import cythonize
 
 compiler_directives = dict()
 
-if platform.system() == 'Linux':
-    compiler_directives['language_level'] = '3'
-
 DEBUG = False
 
 if DEBUG:
