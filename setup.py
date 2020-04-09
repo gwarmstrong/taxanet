@@ -1,8 +1,5 @@
 from setuptools import setup, Extension, find_packages
-import os
 import platform
-import minimap2
-import mmappy
 
 from Cython.Build import cythonize
 
