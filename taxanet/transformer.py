@@ -46,7 +46,7 @@ class TransformerDenseNetwork(nn.Module):
                                       bn_size=conv_bn_size,
                                       growth_rate=growth_rate
                                       )
-        self.embedding_length = 4 + growth_rate * num_layers
+        self.embedding_length = 4 + growth_rate * ndense_layers
         self.nhead = nhead
         self.avg_pool = nn.AdaptiveMaxPool2d((1, 1))
         self.encoder_layer = nn.TransformerEncoderLayer(
